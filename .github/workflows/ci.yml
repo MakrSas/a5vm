@@ -75,6 +75,8 @@ jobs:
         run: |
           mkdir -p build/ios-armv7
           SDK="$THEOS/sdks/iPhoneOS9.3.sdk"
+          mkdir -p "$RUNNER_TEMP/libsystem-stub"
+          cp ci/libSystem.tbd "$RUNNER_TEMP/libsystem-stub/libSystem.tbd"
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
             -miphoneos-version-min=6.0 -fno-stack-protector -ffreestanding \
             -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
@@ -82,6 +84,7 @@ jobs:
             src/ios_main.c src/ios_start.c
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
             -miphoneos-version-min=6.0 -nostdlib -Wl,-e,_start \
+            -L"$RUNNER_TEMP/libsystem-stub" -lSystem \
             memory.o cpu8086.o freestanding.o ios_main.o ios_start.o \
             -o build/ios-armv7/a5vm
           ldid -S build/ios-armv7/a5vm
