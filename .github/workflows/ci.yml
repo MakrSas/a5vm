@@ -59,12 +59,13 @@ jobs:
 
       - name: Download iPhoneOS 6.1 SDK
         run: |
-          git clone --filter=blob:none --no-checkout --depth 1 \
-            https://github.com/Sn0wCooder/theos-sdks.git "$RUNNER_TEMP/theos-sdks"
-          git -C "$RUNNER_TEMP/theos-sdks" sparse-checkout init --cone
-          git -C "$RUNNER_TEMP/theos-sdks" sparse-checkout set iPhoneOS6.1.sdk
-          cat "$RUNNER_TEMP/theos-sdks/iPhoneOS6.1.sdk/iPhoneOS6.1.sdk.zip."* \
-            > "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip"
+          SDK_BASE="https://raw.githubusercontent.com/Sn0wCooder/theos-sdks/master/iPhoneOS6.1.sdk"
+          for part in 001 002 003; do
+            curl -L --fail --retry 3 \
+              "$SDK_BASE/iPhoneOS6.1.sdk.zip.$part" \
+              -o "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip.$part"
+          done
+          cat "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip."* > "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip"
           mkdir -p "$RUNNER_TEMP/iphone-sdk"
           unzip -q "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip" -d "$RUNNER_TEMP/iphone-sdk"
 
