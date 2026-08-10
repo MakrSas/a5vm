@@ -1,5 +1,4 @@
 #import "A5VMMachinesViewController.h"
-#import "A5VMViewController.h"
 
 static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
 
@@ -99,9 +98,22 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     NSDictionary *machine = [self.machines objectAtIndex:indexPath.row];
-    A5VMViewController *runner = [[[A5VMViewController alloc] initWithMachine:machine] autorelease];
-    [self.navigationController pushViewController:runner animated:YES];
+    A5VMMachineSettingsViewController *settings =
+        [[[A5VMMachineSettingsViewController alloc] initWithMachine:machine
+                                                               index:(NSUInteger)indexPath.row
+                                                            delegate:self] autorelease];
+    [self.navigationController pushViewController:settings animated:YES];
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+- (void)machineSettingsController:(A5VMMachineSettingsViewController *)controller
+              didUpdateMachine:(NSDictionary *)machine
+                         atIndex:(NSUInteger)index {
+    (void)controller;
+    if (index >= [self.machines count]) return;
+    [self.machines replaceObjectAtIndex:index withObject:machine];
+    [self saveMachines];
+    [self.tableView reloadData];
 }
 
 - (void)tableView:(UITableView *)tableView
