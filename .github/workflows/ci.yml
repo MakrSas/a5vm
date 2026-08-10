@@ -47,7 +47,7 @@ jobs:
 
   ios-armv7:
     name: iOS 6 ARMv7 tool
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v4
