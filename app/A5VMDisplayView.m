@@ -31,7 +31,11 @@
 }
 
 - (void)drawTextBuffer {
-    UIFont *font = [UIFont fontWithName:@"Courier-Bold" size:9.0f];
+    CGFloat pointSize = self.bounds.size.width /
+        (CGFloat)A5VM_VGA_TEXT_COLUMNS * 1.7f;
+    if (pointSize < 6.0f) pointSize = 6.0f;
+    if (pointSize > 10.0f) pointSize = 10.0f;
+    UIFont *font = [UIFont fontWithName:@"Courier-Bold" size:pointSize];
     if (!font) font = [UIFont fontWithName:@"Courier" size:9.0f];
     if (!font) font = [UIFont systemFontOfSize:9.0f];
 

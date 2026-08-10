@@ -9,5 +9,6 @@
 - (id)initWithDiskPath:(NSString *)path;
 - (void)reloadDiskMetadata;
 - (void)resetDemoDisk:(id)sender;
+- (void)importImage:(id)sender;
 
 @end

@@ -48,13 +48,13 @@
     self.title = _machineName;
 
     CGRect bounds = self.view.bounds;
-    UILabel *title = [[[UILabel alloc] initWithFrame:CGRectMake(8.0f, 5.0f,
-                                                                  bounds.size.width - 180.0f, 30.0f)] autorelease];
-    title.text = @"A5VM  /  8086 PC";
-    title.textColor = [UIColor whiteColor];
-    title.backgroundColor = [UIColor clearColor];
-    title.font = [UIFont boldSystemFontOfSize:20.0f];
-    [self.view addSubview:title];
+    _screenTitle = [[UILabel alloc] initWithFrame:CGRectMake(8.0f, 5.0f,
+                                                               bounds.size.width - 180.0f, 30.0f)];
+    _screenTitle.text = @"A5VM  /  8086 PC";
+    _screenTitle.textColor = [UIColor whiteColor];
+    _screenTitle.backgroundColor = [UIColor clearColor];
+    _screenTitle.font = [UIFont boldSystemFontOfSize:20.0f];
+    [self.view addSubview:_screenTitle];
 
     _statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(bounds.size.width - 168.0f, 8.0f,
                                                                160.0f, 24.0f)];
@@ -81,12 +81,12 @@
     [_resetButton addTarget:self action:@selector(resetVM:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:_resetButton];
 
-    UILabel *inputLabel = [[[UILabel alloc] initWithFrame:CGRectMake(178.0f, 286.0f, 52.0f, 26.0f)] autorelease];
-    inputLabel.text = @"Input:";
-    inputLabel.textColor = [UIColor lightGrayColor];
-    inputLabel.backgroundColor = [UIColor clearColor];
-    inputLabel.font = [UIFont systemFontOfSize:12.0f];
-    [self.view addSubview:inputLabel];
+    _inputLabel = [[UILabel alloc] initWithFrame:CGRectMake(178.0f, 286.0f, 52.0f, 26.0f)];
+    _inputLabel.text = @"Input:";
+    _inputLabel.textColor = [UIColor lightGrayColor];
+    _inputLabel.backgroundColor = [UIColor clearColor];
+    _inputLabel.font = [UIFont systemFontOfSize:12.0f];
+    [self.view addSubview:_inputLabel];
 
     _inputField = [[UITextField alloc] initWithFrame:CGRectMake(228.0f, 284.0f,
                                                                  bounds.size.width - 234.0f, 30.0f)];
@@ -99,6 +99,27 @@
     [self.view addSubview:_inputField];
 
     [self resetVM:nil];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    CGRect bounds = self.view.bounds;
+    CGFloat controlsY = bounds.size.height - 42.0f;
+    CGFloat displayHeight = controlsY - 38.0f - 8.0f;
+    if (displayHeight > 240.0f) displayHeight = 240.0f;
+    if (displayHeight < 120.0f) displayHeight = 120.0f;
+
+    _screenTitle.frame = CGRectMake(8.0f, 5.0f,
+                                    bounds.size.width - 180.0f, 30.0f);
+    _statusLabel.frame = CGRectMake(bounds.size.width - 168.0f, 8.0f,
+                                    160.0f, 24.0f);
+    _displayView.frame = CGRectMake(6.0f, 38.0f,
+                                    bounds.size.width - 12.0f, displayHeight);
+    _runButton.frame = CGRectMake(6.0f, controlsY, 78.0f, 30.0f);
+    _resetButton.frame = CGRectMake(90.0f, controlsY, 78.0f, 30.0f);
+    _inputLabel.frame = CGRectMake(178.0f, controlsY + 2.0f, 52.0f, 26.0f);
+    _inputField.frame = CGRectMake(228.0f, controlsY,
+                                   bounds.size.width - 234.0f, 30.0f);
 }
 
 - (NSString *)diskImagePath {
@@ -202,8 +223,10 @@
     [self saveDiskImage];
     [_machine release];
     [_machineName release];
+    [_screenTitle release];
     [_displayView release];
     [_statusLabel release];
+    [_inputLabel release];
     [_runButton release];
     [_resetButton release];
     [_inputField release];

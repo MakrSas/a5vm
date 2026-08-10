@@ -11,6 +11,7 @@
     id <A5VMNewMachineDelegate> _delegate;
     NSString *_osFamily;
     NSString *_osVersion;
+    NSString *_mediaPath;
     NSDictionary *_profile;
 }
 

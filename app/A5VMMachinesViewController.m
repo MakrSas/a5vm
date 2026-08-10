@@ -57,6 +57,9 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
         if ([[machine objectForKey:@"capability"] length] == 0) {
             [machine setObject:@"Ready for floppy boot" forKey:@"capability"];
         }
+        if ([machine objectForKey:@"mediaPath"] == nil) {
+            [machine setObject:@"" forKey:@"mediaPath"];
+        }
         if ([[machine objectForKey:@"diskImage"] length] == 0) {
             [machine setObject:[NSString stringWithFormat:@"machine-%lu.dsk",
                                 (unsigned long)index + 1ul]
@@ -147,8 +150,34 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
              didCreateMachine:(NSDictionary *)machine {
     (void)controller;
     NSMutableDictionary *created = [NSMutableDictionary dictionaryWithDictionary:machine];
+    NSUInteger number = [self.machines count] + 1ul;
     NSString *diskImage = [NSString stringWithFormat:@"machine-%lu.dsk",
-                           (unsigned long)[self.machines count] + 1ul];
+                           (unsigned long)number];
+    NSString *sourcePath = [created objectForKey:@"mediaPath"];
+    NSString *extension = [[sourcePath pathExtension] lowercaseString];
+    if ([sourcePath length] != 0) {
+        NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                    NSUserDomainMask, YES);
+        NSString *filename = [NSString stringWithFormat:@"machine-%lu-media.%@",
+                              (unsigned long)number,
+                              [extension length] == 0 ? @"img" : extension];
+        NSString *destination = [[directories objectAtIndex:0]
+                                 stringByAppendingPathComponent:filename];
+        NSError *error = nil;
+        if ([[NSFileManager defaultManager] fileExistsAtPath:sourcePath] &&
+            [[NSFileManager defaultManager] copyItemAtPath:sourcePath
+                                                     toPath:destination
+                                                      error:&error]) {
+            [created setObject:filename forKey:@"mediaPath"];
+            if ([[created objectForKey:@"osFamily"] isEqualToString:@"DOS"] &&
+                ([extension isEqualToString:@"img"] || [extension isEqualToString:@"ima"] ||
+                 [extension isEqualToString:@"dsk"])) {
+                diskImage = filename;
+            }
+        } else {
+            [created setObject:@"File could not be copied" forKey:@"mediaStatus"];
+        }
+    }
     [created setObject:diskImage forKey:@"diskImage"];
     [self.machines addObject:created];
     [self saveMachines];

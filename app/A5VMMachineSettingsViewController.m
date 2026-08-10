@@ -32,7 +32,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return 1 + (section == 0 ? 2 : (section == 1 ? 2 : 0));
+    return section == 0 ? 3 : (section == 1 ? 4 : 2);
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -56,14 +56,20 @@
     NSString *key = nil;
     NSString *label = nil;
     if (indexPath.section == 2) {
-        key = @"capability";
-        label = @"Status";
+        if (indexPath.row == 0) {
+            key = @"capability";
+            label = @"Status";
+        } else {
+            key = @"mediaPath";
+            label = @"Installation media";
+        }
         cell.textLabel.text = label;
         cell.detailTextLabel.text = [_machine objectForKey:key];
+        if ([[cell.detailTextLabel text] length] == 0) cell.detailTextLabel.text = @"Not selected";
         cell.accessoryType = UITableViewCellAccessoryNone;
-        if ([[_machine objectForKey:key] isEqualToString:@"Ready for floppy boot"]) {
+        if (indexPath.row == 0 && [[_machine objectForKey:key] isEqualToString:@"Ready for floppy boot"]) {
             cell.detailTextLabel.textColor = [UIColor colorWithRed:0.10f green:0.55f blue:0.15f alpha:1.0f];
-        } else {
+        } else if (indexPath.row == 0) {
             cell.detailTextLabel.textColor = [UIColor colorWithRed:0.75f green:0.35f blue:0.05f alpha:1.0f];
         }
         return cell;
@@ -84,9 +90,12 @@
     } else if (indexPath.row == 1) {
         key = @"display";
         label = @"Display";
-    } else {
+    } else if (indexPath.row == 2) {
         key = @"storage";
         label = @"Storage";
+    } else {
+        key = @"mediaPath";
+        label = @"Installation media";
     }
     cell.textLabel.text = label;
     cell.detailTextLabel.text = [_machine objectForKey:key];

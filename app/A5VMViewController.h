@@ -7,8 +7,10 @@
 @interface A5VMViewController : UIViewController <UITextFieldDelegate> {
     NSDictionary *_machine;
     NSString *_machineName;
+    UILabel *_screenTitle;
     A5VMDisplayView *_displayView;
     UILabel *_statusLabel;
+    UILabel *_inputLabel;
     UIButton *_runButton;
     UIButton *_resetButton;
     UITextField *_inputField;

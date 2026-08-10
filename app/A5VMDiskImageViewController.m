@@ -4,6 +4,9 @@
 
 @implementation A5VMDiskImageViewController
 
+static NSInteger const A5VMResetDiskAlertTag = 2101;
+static NSInteger const A5VMImportDiskAlertTag = 2102;
+
 - (id)initWithDiskPath:(NSString *)path {
     self = [super initWithStyle:UITableViewStyleGrouped];
     if (self) {
@@ -38,7 +41,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? 3 : 1;
+    return section == 0 ? 3 : 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -56,9 +59,11 @@
     }
 
     if (indexPath.section == 1) {
-        cell.textLabel.text = @"Reset demo boot disk";
+        cell.textLabel.text = indexPath.row == 0 ? @"Reset demo boot disk" : @"Import image from path";
         cell.detailTextLabel.text = nil;
-        cell.textLabel.textColor = [UIColor colorWithRed:0.80f green:0.10f blue:0.10f alpha:1.0f];
+        cell.textLabel.textColor = indexPath.row == 0
+            ? [UIColor colorWithRed:0.80f green:0.10f blue:0.10f alpha:1.0f]
+            : [UIColor colorWithRed:0.10f green:0.35f blue:0.75f alpha:1.0f];
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         return cell;
     }
@@ -82,11 +87,16 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section != 1) return;
+    if (indexPath.row == 1) {
+        [self importImage:nil];
+        return;
+    }
     UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Reset disk image?"
                                                      message:@"The demo boot sector will replace this floppy image."
                                                     delegate:self
                                            cancelButtonTitle:@"Cancel"
                                            otherButtonTitles:@"Reset", nil] autorelease];
+    alert.tag = A5VMResetDiskAlertTag;
     [alert show];
 }
 
@@ -97,11 +107,54 @@
                                                     delegate:self
                                            cancelButtonTitle:@"Cancel"
                                            otherButtonTitles:@"Reset", nil] autorelease];
+    alert.tag = A5VMResetDiskAlertTag;
+    [alert show];
+}
+
+- (void)importImage:(id)sender {
+    (void)sender;
+    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Import disk image"
+                                                     message:@"Enter the full path of an IMG, DSK, or ISO file."
+                                                    delegate:self
+                                           cancelButtonTitle:@"Cancel"
+                                           otherButtonTitles:@"Import", nil] autorelease];
+    alert.tag = A5VMImportDiskAlertTag;
+    alert.alertViewStyle = UIAlertViewStylePlainTextInput;
+    [alert textFieldAtIndex:0].autocorrectionType = UITextAutocorrectionTypeNo;
+    [alert textFieldAtIndex:0].autocapitalizationType = UITextAutocapitalizationTypeNone;
     [alert show];
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
     if (buttonIndex == alertView.cancelButtonIndex) return;
+    if (alertView.tag == A5VMImportDiskAlertTag) {
+        NSString *source = [[alertView textFieldAtIndex:0].text
+                            stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:source error:nil];
+        NSNumber *fileSize = [attributes objectForKey:NSFileSize];
+        if ([fileSize unsignedLongLongValue] == 0 ||
+            [fileSize unsignedLongLongValue] > A5VM_FLOPPY_IMAGE_SIZE) {
+            UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
+                                                               message:@"The file was not found or is larger than a floppy image."
+                                                              delegate:nil
+                                                     cancelButtonTitle:@"OK"
+                                                     otherButtonTitles:nil] autorelease];
+            [error show];
+            return;
+        }
+        NSData *image = [NSData dataWithContentsOfFile:source];
+        if (!image || ![image writeToFile:_diskPath atomically:YES]) {
+            UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
+                                                               message:@"A5VM could not read the selected file."
+                                                              delegate:nil
+                                                     cancelButtonTitle:@"OK"
+                                                     otherButtonTitles:nil] autorelease];
+            [error show];
+            return;
+        }
+        [self reloadDiskMetadata];
+        return;
+    }
     a5vm_floppy floppy;
     if (!a5vm_floppy_init(&floppy, 0)) return;
     a5vm_floppy_create_demo(&floppy);

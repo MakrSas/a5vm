@@ -3,6 +3,7 @@
 static NSInteger const A5VMFamilyActionSheetTag = 1001;
 static NSInteger const A5VMVersionActionSheetTag = 1002;
 static NSInteger const A5VMCreateAlertTag = 1003;
+static NSInteger const A5VMMediaAlertTag = 1004;
 
 @implementation A5VMNewMachineViewController
 
@@ -49,6 +50,7 @@ static NSInteger const A5VMCreateAlertTag = 1003;
     NSString *storage;
     NSString *machineProfile;
     NSString *mediaType;
+    NSString *mediaPath;
     NSString *capability;
     if ([_osFamily isEqualToString:@"DOS"]) {
         architecture = @"8086";
@@ -77,6 +79,7 @@ static NSInteger const A5VMCreateAlertTag = 1003;
         mediaType = @"ROM + disk";
         capability = @"Requires Macintosh backend";
     }
+    mediaPath = _mediaPath ? _mediaPath : @"";
 
     NSDictionary *newProfile = [NSDictionary dictionaryWithObjectsAndKeys:
                                 _osFamily, @"osFamily",
@@ -87,12 +90,28 @@ static NSInteger const A5VMCreateAlertTag = 1003;
                                 storage, @"storage",
                                 machineProfile, @"machineProfile",
                                 mediaType, @"mediaType",
+                                mediaPath, @"mediaPath",
                                 capability, @"capability",
                                 nil];
     [_profile release];
     _profile = [newProfile copy];
     self.navigationItem.rightBarButtonItem.enabled = YES;
     [self.tableView reloadData];
+}
+
+- (void)chooseMedia:(id)sender {
+    (void)sender;
+    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Installation media path"
+                                                     message:@"Enter a full path to an IMG, ISO, ROM, or disk image. The file will be copied into A5VM Documents."
+                                                    delegate:self
+                                           cancelButtonTitle:@"Cancel"
+                                           otherButtonTitles:@"Use", nil] autorelease];
+    alert.tag = A5VMMediaAlertTag;
+    alert.alertViewStyle = UIAlertViewStylePlainTextInput;
+    [alert textFieldAtIndex:0].text = _mediaPath ? _mediaPath : @"";
+    [alert textFieldAtIndex:0].autocorrectionType = UITextAutocorrectionTypeNo;
+    [alert textFieldAtIndex:0].autocapitalizationType = UITextAutocapitalizationTypeNone;
+    [alert show];
 }
 
 - (void)chooseFamily:(id)sender {
@@ -122,13 +141,14 @@ static NSInteger const A5VMCreateAlertTag = 1003;
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     (void)tableView;
-    return 3;
+    return 4;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
     if (section == 0) return 2;
     if (section == 1) return _profile ? 4 : 1;
+    if (section == 2) return _profile ? 2 : 1;
     return 1;
 }
 
@@ -136,6 +156,7 @@ static NSInteger const A5VMCreateAlertTag = 1003;
     (void)tableView;
     if (section == 0) return @"Operating System";
     if (section == 1) return @"Generated Configuration";
+    if (section == 2) return @"Installation Media";
     return @"Create";
 }
 
@@ -169,6 +190,21 @@ static NSInteger const A5VMCreateAlertTag = 1003;
         cell.textLabel.text = @"Choose an OS first";
         cell.detailTextLabel.text = nil;
         cell.accessoryType = UITableViewCellAccessoryNone;
+    } else if (indexPath.section == 2 && _profile) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"Format";
+            cell.detailTextLabel.text = [_profile objectForKey:@"mediaType"];
+            cell.accessoryType = UITableViewCellAccessoryNone;
+        } else {
+            cell.textLabel.text = @"Source file";
+            cell.detailTextLabel.text = [_profile objectForKey:@"mediaPath"];
+            if ([[cell.detailTextLabel text] length] == 0) cell.detailTextLabel.text = @"Not selected";
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+    } else if (indexPath.section == 2) {
+        cell.textLabel.text = @"Choose an OS first";
+        cell.detailTextLabel.text = nil;
+        cell.accessoryType = UITableViewCellAccessoryNone;
     } else {
         cell.textLabel.text = @"Create VM";
         cell.detailTextLabel.text = _profile ? [_profile objectForKey:@"capability"] : @"Choose an OS first";
@@ -181,7 +217,8 @@ static NSInteger const A5VMCreateAlertTag = 1003;
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section == 0 && indexPath.row == 0) [self chooseFamily:nil];
     else if (indexPath.section == 0 && indexPath.row == 1) [self chooseVersion:nil];
-    else if (indexPath.section == 2) [self createMachine:nil];
+    else if (indexPath.section == 2 && indexPath.row == 1) [self chooseMedia:nil];
+    else if (indexPath.section == 3) [self createMachine:nil];
 }
 
 - (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
@@ -215,7 +252,16 @@ static NSInteger const A5VMCreateAlertTag = 1003;
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    if (alertView.tag != A5VMCreateAlertTag || buttonIndex == alertView.cancelButtonIndex) return;
+    if (buttonIndex == alertView.cancelButtonIndex) return;
+    if (alertView.tag == A5VMMediaAlertTag) {
+        NSString *path = [[alertView textFieldAtIndex:0].text
+                          stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        [_mediaPath release];
+        _mediaPath = [path length] == 0 ? nil : [path copy];
+        [self rebuildProfile];
+        return;
+    }
+    if (alertView.tag != A5VMCreateAlertTag) return;
     NSString *name = [[alertView textFieldAtIndex:0].text
                       stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if ([name length] == 0) name = [_profile objectForKey:@"osVersion"];
@@ -227,6 +273,7 @@ static NSInteger const A5VMCreateAlertTag = 1003;
 - (void)dealloc {
     [_osFamily release];
     [_osVersion release];
+    [_mediaPath release];
     [_profile release];
     [super dealloc];
 }
