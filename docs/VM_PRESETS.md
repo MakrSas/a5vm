@@ -109,3 +109,15 @@ No operating-system images or copyrighted ROMs belong in this repository.
 3. Add a file/media picker for user-provided `IMG` files.
 4. Add Windows profiles after 386/protected mode and IDE support exist.
 5. Add Mac OS profiles after 68k or PowerPC CPU and Macintosh ROM support exist.
+
+## Current implementation status
+
+The current DOS profile is runnable on the 8086 machine backend. The portable
+core also contains an initial `cpu386` backend that can execute a real-mode
+setup sequence through `LGDT`, `CR0.PE`, and a protected-mode far jump, plus a
+small 32-bit instruction subset. IDE PIO and the virtual hard disk are already
+available to the 8086 machine.
+
+The Windows presets remain marked as unavailable until the 386 backend is
+connected to the machine's BIOS, interrupt, and media boot path. MacOS presets
+still require a separate Macintosh CPU/ROM backend.

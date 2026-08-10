@@ -32,6 +32,7 @@ typedef struct {
     uint16_t gdtr_limit;
     uint32_t segment_bases[A5VM_CPU386_SEG_COUNT];
     uint32_t segment_limits[A5VM_CPU386_SEG_COUNT];
+    uint8_t segment_access[A5VM_CPU386_SEG_COUNT];
     int protected_mode;
     int default_operand_size32;
     a5vm_cpu_status status;

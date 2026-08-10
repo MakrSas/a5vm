@@ -67,7 +67,8 @@ static uint32_t sub_value(a5vm_cpu386 *cpu, uint32_t left, uint32_t right,
 }
 
 static int descriptor(const a5vm_cpu386 *cpu, uint16_t selector,
-                      uint32_t *base, uint32_t *limit, int *default32) {
+                      uint32_t *base, uint32_t *limit, int *default32,
+                      uint8_t *access) {
     uint32_t address;
     uint32_t low;
     uint32_t high;
@@ -78,9 +79,11 @@ static int descriptor(const a5vm_cpu386 *cpu, uint16_t selector,
     high = read32(cpu, address + 4u);
     *base = ((low >> 16) & 0xFFFFu) |
             ((high & 0xFFu) << 16) | ((high >> 24) << 24);
-    *limit = (low & 0xFFFFu) | ((high & 0x000F0000u) >> 4);
+    *limit = (low & 0xFFFFu) | (high & 0x000F0000u);
+    if ((high & 0x00800000u) != 0) *limit = (*limit << 12) | 0xFFFu;
     *default32 = (high & 0x00400000u) != 0;
-    return (high & 0x00008000u) != 0;
+    *access = (uint8_t)(high >> 8);
+    return (*access & 0x80u) != 0 && (*access & 0x10u) != 0;
 }
 
 uint32_t a5vm_cpu386_linear_address(const a5vm_cpu386 *cpu,
@@ -92,9 +95,26 @@ uint32_t a5vm_cpu386_linear_address(const a5vm_cpu386 *cpu,
     return (cpu->segment_bases[segment] + offset) & A5VM_ADDRESS_MASK;
 }
 
+static uint32_t checked_linear_address(a5vm_cpu386 *cpu, unsigned segment,
+                                       uint32_t offset) {
+    uint32_t address = a5vm_cpu386_linear_address(cpu, segment, offset);
+    uint64_t physical = (uint64_t)cpu->segment_bases[segment] + offset;
+    if (cpu->protected_mode && offset > cpu->segment_limits[segment]) {
+        faultf(cpu, A5VM_CPU_FAULT,
+               "segment %u limit exceeded at offset %08X", segment, offset);
+        return 0;
+    }
+    if (cpu->protected_mode && physical > A5VM_ADDRESS_MASK) {
+        faultf(cpu, A5VM_CPU_FAULT,
+               "i386 address exceeds available memory at %08X", offset);
+        return 0;
+    }
+    return address;
+}
+
 static uint8_t fetch8(a5vm_cpu386 *cpu) {
-    uint32_t address = a5vm_cpu386_linear_address(cpu, A5VM_CPU386_SEG_CS,
-                                                  cpu->eip);
+    uint32_t address = checked_linear_address(cpu, A5VM_CPU386_SEG_CS,
+                                              cpu->eip);
     uint8_t value = a5vm_memory_read8(cpu->memory, address);
     cpu->eip++;
     return value;
@@ -132,9 +152,34 @@ static int decode_modrm(a5vm_cpu386 *cpu, modrm386 *m, int address32) {
 static uint32_t memory_address(a5vm_cpu386 *cpu, const modrm386 *m,
                                int address32) {
     (void)address32;
-    if (m->mod == 0) return a5vm_cpu386_linear_address(cpu, A5VM_CPU386_SEG_DS,
-                                                       m->displacement);
+    if (m->mod == 0) return checked_linear_address(cpu, A5VM_CPU386_SEG_DS,
+                                                   m->displacement);
     return 0;
+}
+
+static int load_segment(a5vm_cpu386 *cpu, unsigned segment, uint16_t selector) {
+    uint32_t base;
+    uint32_t limit;
+    int default32;
+    uint8_t access;
+    if (!cpu->protected_mode) {
+        cpu->segs[segment] = selector;
+        cpu->segment_bases[segment] = (uint32_t)selector << 4;
+        cpu->segment_limits[segment] = 0xFFFF;
+        cpu->segment_access[segment] = 0;
+        return 1;
+    }
+    if (segment == A5VM_CPU386_SEG_CS ||
+        !descriptor(cpu, selector, &base, &limit, &default32, &access) ||
+        (access & 0x08u) != 0) {
+        return 0;
+    }
+    (void)default32;
+    cpu->segs[segment] = selector;
+    cpu->segment_bases[segment] = base;
+    cpu->segment_limits[segment] = limit;
+    cpu->segment_access[segment] = access;
+    return 1;
 }
 
 void a5vm_cpu386_init(a5vm_cpu386 *cpu, a5vm_memory *memory) {
@@ -155,6 +200,7 @@ void a5vm_cpu386_reset(a5vm_cpu386 *cpu) {
     cpu->gdtr_limit = 0;
     memset(cpu->segment_bases, 0, sizeof(cpu->segment_bases));
     memset(cpu->segment_limits, 0, sizeof(cpu->segment_limits));
+    memset(cpu->segment_access, 0, sizeof(cpu->segment_access));
     cpu->segment_bases[A5VM_CPU386_SEG_CS] = 0xF0000;
     for (unsigned index = 0; index < A5VM_CPU386_SEG_COUNT; ++index) {
         cpu->segment_limits[index] = 0xFFFFF;
@@ -225,6 +271,15 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
     if (opcode == 0x3D) {
         if (operand32) (void)sub_value(cpu, cpu->regs[A5VM_CPU386_REG_EAX], fetch32(cpu), 1);
         else (void)sub_value(cpu, cpu->regs[A5VM_CPU386_REG_EAX], fetch16(cpu), 0);
+        return cpu->status;
+    }
+    if (opcode == 0x8E) {
+        if (!decode_modrm(cpu, &m, cpu->default_operand_size32)) return cpu->status;
+        if (m.mod != 3 || m.reg >= A5VM_CPU386_SEG_COUNT || m.reg == A5VM_CPU386_SEG_CS ||
+            !load_segment(cpu, m.reg, (uint16_t)cpu->regs[m.rm])) {
+            faultf(cpu, A5VM_CPU_FAULT, "invalid MOV segment selector");
+            return cpu->status;
+        }
         return cpu->status;
     }
     if (opcode == 0x75) {
@@ -333,14 +388,15 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
             uint32_t base;
             uint32_t limit;
             int default32;
-            if (!descriptor(cpu, selector, &base, &limit, &default32)) {
+            uint8_t access;
+            if (!descriptor(cpu, selector, &base, &limit, &default32, &access) ||
+                (access & 0x08u) == 0) {
                 faultf(cpu, A5VM_CPU_FAULT, "invalid protected CS 0x%04X", selector);
                 return cpu->status;
             }
-            (void)base;
-            (void)limit;
             cpu->segment_bases[A5VM_CPU386_SEG_CS] = base;
             cpu->segment_limits[A5VM_CPU386_SEG_CS] = limit;
+            cpu->segment_access[A5VM_CPU386_SEG_CS] = access;
             cpu->default_operand_size32 = default32;
         }
         return cpu->status;
