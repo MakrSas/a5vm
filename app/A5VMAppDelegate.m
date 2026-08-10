@@ -1,5 +1,5 @@
 #import "A5VMAppDelegate.h"
-#import "A5VMViewController.h"
+#import "A5VMMachinesViewController.h"
 
 @implementation A5VMAppDelegate
 
@@ -11,7 +11,8 @@
     (void)application;
     (void)launchOptions;
     self.window = [[[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]] autorelease];
-    self.viewController = [[[A5VMViewController alloc] init] autorelease];
+    A5VMMachinesViewController *machines = [[[A5VMMachinesViewController alloc] init] autorelease];
+    self.viewController = [[[UINavigationController alloc] initWithRootViewController:machines] autorelease];
     self.window.rootViewController = self.viewController;
     [self.window makeKeyAndVisible];
     return YES;

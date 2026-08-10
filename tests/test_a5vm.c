@@ -1,6 +1,8 @@
 #include <stdio.h>
 
 #include "a5vm/cpu8086.h"
+#include "a5vm/keyboard.h"
+#include "a5vm/vga_text.h"
 
 static int failures;
 
@@ -65,10 +67,49 @@ static void test_stack(void) {
     CHECK(cpu.regs[A5VM_REG_SP] == 0x8000);
 }
 
+static void test_vga_text(void) {
+    a5vm_vga_text vga;
+    a5vm_vga_text_init(&vga);
+    a5vm_vga_text_write(&vga, "A5VM");
+    CHECK(vga.cells[0] == 'A');
+    CHECK(vga.cells[2] == '5');
+    CHECK(vga.cursor_column == 4);
+    a5vm_vga_text_write(&vga, "\nREADY");
+    CHECK(vga.cells[A5VM_VGA_TEXT_COLUMNS * 2u] == 'R');
+    CHECK(vga.cells[A5VM_VGA_TEXT_COLUMNS * 2u + 2u] == 'E');
+
+    {
+        unsigned line;
+        for (line = 0; line < A5VM_VGA_TEXT_ROWS; ++line) {
+            a5vm_vga_text_putc(&vga, '\n');
+        }
+    }
+    CHECK(vga.cursor_row == A5VM_VGA_TEXT_ROWS - 1u);
+}
+
+static void test_keyboard(void) {
+    a5vm_keyboard keyboard;
+    uint8_t value = 0;
+    unsigned index;
+    a5vm_keyboard_init(&keyboard);
+    CHECK(a5vm_keyboard_empty(&keyboard));
+    CHECK(a5vm_keyboard_push(&keyboard, 'A'));
+    CHECK(a5vm_keyboard_push(&keyboard, 'B'));
+    CHECK(a5vm_keyboard_pop(&keyboard, &value) && value == 'A');
+    CHECK(a5vm_keyboard_pop(&keyboard, &value) && value == 'B');
+    CHECK(a5vm_keyboard_empty(&keyboard));
+    for (index = 0; index < A5VM_KEYBOARD_CAPACITY; ++index) {
+        CHECK(a5vm_keyboard_push(&keyboard, (uint8_t)index));
+    }
+    CHECK(!a5vm_keyboard_push(&keyboard, 0xFF));
+}
+
 int main(void) {
     test_memory_wrap();
     test_arithmetic_and_branch();
     test_stack();
+    test_vga_text();
+    test_keyboard();
     if (failures != 0) {
         fprintf(stderr, "%d test(s) failed\n", failures);
         return 1;

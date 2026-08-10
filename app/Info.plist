@@ -23,6 +23,10 @@
     <key>UIDeviceFamily</key>
     <array><integer>1</integer></array>
     <key>UISupportedInterfaceOrientations</key>
-    <array><string>UIInterfaceOrientationPortrait</string></array>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
 </dict>
 </plist>

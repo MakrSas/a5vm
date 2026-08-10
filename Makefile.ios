@@ -4,8 +4,9 @@ ARCHS := armv7
 include $(THEOS)/makefiles/common.mk
 
 APPLICATION_NAME = A5VM
-A5VM_FILES = app/main.m app/A5VMAppDelegate.m app/A5VMViewController.m \
-             app/A5VMDisplayView.m src/memory.c src/cpu8086.c
+A5VM_FILES = app/main.m app/A5VMAppDelegate.m app/A5VMMachinesViewController.m \
+             app/A5VMViewController.m app/A5VMDisplayView.m src/memory.c \
+             src/cpu8086.c src/vga_text.c src/keyboard.c
 A5VM_FRAMEWORKS = UIKit CoreGraphics
 A5VM_CFLAGS = -Iinclude -std=c11
 A5VM_INFO_PLIST = app/Info.plist
