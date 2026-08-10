@@ -45,7 +45,8 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
             @"8086", @"architecture",
             @"640 KB", @"ram",
             @"VGA Text", @"display",
-            @"Virtual floppy", @"storage",
+            @"1.44 MB floppy", @"storage",
+            @"8086-demo.dsk", @"diskImage",
             nil];
 }
 
@@ -141,12 +142,15 @@ commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
                       stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if ([name length] == 0) name = @"8086 PC";
 
+    NSString *diskImage = [NSString stringWithFormat:@"machine-%lu.dsk",
+                           (unsigned long)[self.machines count] + 1ul];
     NSDictionary *machine = [NSDictionary dictionaryWithObjectsAndKeys:
                              name, @"name",
                              @"8086", @"architecture",
                              @"640 KB", @"ram",
                              @"VGA Text", @"display",
-                             @"Virtual floppy", @"storage",
+                             @"1.44 MB floppy", @"storage",
+                             diskImage, @"diskImage",
                              nil];
     [self.machines addObject:machine];
     [self saveMachines];

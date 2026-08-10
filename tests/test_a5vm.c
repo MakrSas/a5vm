@@ -1,7 +1,9 @@
 #include <stdio.h>
 
 #include "a5vm/cpu8086.h"
+#include "a5vm/floppy.h"
 #include "a5vm/keyboard.h"
+#include "a5vm/machine.h"
 #include "a5vm/vga_text.h"
 
 static int failures;
@@ -104,12 +106,36 @@ static void test_keyboard(void) {
     CHECK(!a5vm_keyboard_push(&keyboard, 0xFF));
 }
 
+static void test_floppy_and_boot(void) {
+    a5vm_floppy floppy;
+    a5vm_machine machine;
+    uint8_t sector[A5VM_FLOPPY_SECTOR_SIZE];
+    a5vm_cpu_status status;
+
+    CHECK(a5vm_floppy_init(&floppy, 0));
+    a5vm_floppy_create_demo(&floppy);
+    CHECK(a5vm_floppy_read_sector(&floppy, 0, sector));
+    CHECK(sector[0] == 0xB8);
+    CHECK(sector[510] == 0x55 && sector[511] == 0xAA);
+    CHECK(!a5vm_floppy_read_sector(&floppy, A5VM_FLOPPY_SECTOR_COUNT, sector));
+    a5vm_floppy_deinit(&floppy);
+
+    CHECK(a5vm_machine_init(&machine));
+    status = a5vm_machine_boot(&machine, 100);
+    CHECK(status == A5VM_CPU_HALTED);
+    CHECK(machine.cpu.regs[A5VM_REG_AX] == 5);
+    CHECK(machine.cpu.regs[A5VM_REG_BX] == 3);
+    CHECK(machine.cpu.ip == A5VM_BOOT_ADDRESS + 9u);
+    a5vm_machine_deinit(&machine);
+}
+
 int main(void) {
     test_memory_wrap();
     test_arithmetic_and_branch();
     test_stack();
     test_vga_text();
     test_keyboard();
+    test_floppy_and_boot();
     if (failures != 0) {
         fprintf(stderr, "%d test(s) failed\n", failures);
         return 1;

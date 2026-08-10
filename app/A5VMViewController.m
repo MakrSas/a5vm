@@ -2,6 +2,7 @@
 #import "A5VMDisplayView.h"
 
 #include <stdlib.h>
+#include <string.h>
 
 @implementation A5VMViewController
 
@@ -19,14 +20,18 @@
                         @"8086", @"architecture",
                         @"640 KB", @"ram",
                         @"VGA Text", @"display",
-                        @"Virtual floppy", @"storage",
+                        @"1.44 MB floppy", @"storage",
+                        @"8086-demo.dsk", @"diskImage",
                         nil];
         }
         _machineName = [[_machine objectForKey:@"name"] copy];
-        _memory = (a5vm_memory *)calloc(1, sizeof(a5vm_memory));
-        _cpu = (a5vm_cpu8086 *)calloc(1, sizeof(a5vm_cpu8086));
-        _keyboard = (a5vm_keyboard *)calloc(1, sizeof(a5vm_keyboard));
-        _vga = (a5vm_vga_text *)calloc(1, sizeof(a5vm_vga_text));
+        _runtime = (a5vm_machine *)calloc(1, sizeof(a5vm_machine));
+        if (!a5vm_machine_init(_runtime)) {
+            free(_runtime);
+            _runtime = NULL;
+        } else {
+            [self loadDiskImage];
+        }
     }
     return self;
 }
@@ -96,70 +101,91 @@
     [self resetVM:nil];
 }
 
+- (NSString *)diskImagePath {
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *documents = [directories objectAtIndex:0];
+    NSString *filename = [_machine objectForKey:@"diskImage"];
+    if ([filename length] == 0) filename = @"a5vm-demo.dsk";
+    return [documents stringByAppendingPathComponent:filename];
+}
+
+- (void)loadDiskImage {
+    NSData *image = [NSData dataWithContentsOfFile:[self diskImagePath]];
+    if (image && [image length] <= _runtime->floppy.size) {
+        memcpy(_runtime->floppy.bytes, [image bytes], [image length]);
+    } else {
+        [self saveDiskImage];
+    }
+}
+
+- (void)saveDiskImage {
+    if (!_runtime || !_runtime->floppy.bytes) return;
+    NSData *image = [NSData dataWithBytes:_runtime->floppy.bytes
+                                   length:_runtime->floppy.size];
+    [image writeToFile:[self diskImagePath] atomically:YES];
+}
+
 - (void)renderVGA {
-    [_displayView setTextBuffer:a5vm_vga_text_cells(_vga)];
+    [_displayView setTextBuffer:a5vm_vga_text_cells(&_runtime->vga)];
 }
 
 - (void)writeLine:(NSString *)line {
-    a5vm_vga_text_write(_vga, [line UTF8String]);
-    a5vm_vga_text_putc(_vga, '\n');
+    a5vm_vga_text_write(&_runtime->vga, [line UTF8String]);
+    a5vm_vga_text_putc(&_runtime->vga, '\n');
 }
 
 - (void)runDemo:(id)sender {
     (void)sender;
-    static const uint8_t program[] = {
-        0xB8, 0x02, 0x00,       /* mov ax, 2 */
-        0xBB, 0x03, 0x00,       /* mov bx, 3 */
-        0x01, 0xD8,             /* add ax, bx */
-        0xF4                    /* hlt */
-    };
-
-    a5vm_memory_init(_memory);
-    a5vm_memory_load(_memory, 0x1000, program, sizeof(program));
-    a5vm_cpu8086_init(_cpu, _memory);
-    _cpu->segs[A5VM_SEG_CS] = 0;
-    _cpu->ip = 0x1000;
-    _cpu->regs[A5VM_REG_SP] = 0xFFFE;
-    (void)a5vm_cpu8086_run(_cpu, 100);
-
-    a5vm_vga_text_clear(_vga);
+    a5vm_cpu_status status;
+    if (!_runtime) return;
+    status = a5vm_machine_boot(_runtime, 1000);
+    a5vm_vga_text_clear(&_runtime->vga);
     [self writeLine:@"A5VM BIOS 0.1"];
-    [self writeLine:@"8086 PC / 640 KB RAM"];
+    [self writeLine:[NSString stringWithFormat:@"%@ / %@ / %@",
+                     [_machine objectForKey:@"architecture"],
+                     [_machine objectForKey:@"ram"],
+                     [_machine objectForKey:@"display"]]];
     [self writeLine:@"VGA TEXT 80x25  KEYBOARD READY"];
     [self writeLine:@" "];
-    [self writeLine:@"Booting from virtual disk..."];
-    [self writeLine:@"CPU halted after demo program."];
+    [self writeLine:@"Booting sector 0 from virtual floppy..."];
+    [self writeLine:status == A5VM_CPU_HALTED ? @"Boot sector halted." : @"Boot failed."];
     [self writeLine:[NSString stringWithFormat:@"AX=%04X  BX=%04X  IP=%04X",
-                     _cpu->regs[A5VM_REG_AX], _cpu->regs[A5VM_REG_BX], _cpu->ip]];
-    a5vm_vga_text_write(_vga, "A:\\>");
+                     _runtime->cpu.regs[A5VM_REG_AX],
+                     _runtime->cpu.regs[A5VM_REG_BX],
+                     _runtime->cpu.ip]];
+    if (status != A5VM_CPU_HALTED) {
+        [self writeLine:[NSString stringWithFormat:@"FAULT: %s",
+                         a5vm_cpu8086_fault(&_runtime->cpu)]];
+    }
+    a5vm_vga_text_write(&_runtime->vga, "A:\\>");
     [self renderVGA];
-    _statusLabel.text = @"Halted";
+    _statusLabel.text = status == A5VM_CPU_HALTED ? @"Halted" : @"Fault";
 }
 
 - (void)resetVM:(id)sender {
     (void)sender;
-    a5vm_memory_init(_memory);
-    a5vm_cpu8086_init(_cpu, _memory);
-    a5vm_keyboard_init(_keyboard);
-    a5vm_vga_text_init(_vga);
-    a5vm_vga_text_write(_vga, "A5VM BIOS 0.1\n8086 PC READY\n\nA:\\>");
+    if (!_runtime) return;
+    a5vm_machine_reset(_runtime);
+    a5vm_vga_text_write(&_runtime->vga, "A5VM BIOS 0.1\n8086 PC READY\n\nA:\\>");
     [self renderVGA];
     _statusLabel.text = @"Ready";
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    if (!_runtime) return YES;
     NSString *command = textField.text;
     const char *bytes = [command UTF8String];
     while (*bytes != '\0') {
-        if (a5vm_keyboard_push(_keyboard, (uint8_t)*bytes)) {
-            a5vm_vga_text_putc(_vga, (uint8_t)*bytes);
+        if (a5vm_keyboard_push(&_runtime->keyboard, (uint8_t)*bytes)) {
+            a5vm_vga_text_putc(&_runtime->vga, (uint8_t)*bytes);
         }
         bytes++;
     }
-    a5vm_vga_text_putc(_vga, '\n');
-    a5vm_vga_text_write(_vga, "A:\\>");
+    a5vm_vga_text_putc(&_runtime->vga, '\n');
+    a5vm_vga_text_write(&_runtime->vga, "A:\\>");
     [self renderVGA];
-    _statusLabel.text = [NSString stringWithFormat:@"Input queued (%u)", _keyboard->count];
+    _statusLabel.text = [NSString stringWithFormat:@"Input queued (%u)", _runtime->keyboard.count];
     textField.text = @"";
     [textField resignFirstResponder];
     return YES;
@@ -173,6 +199,7 @@
 }
 
 - (void)dealloc {
+    [self saveDiskImage];
     [_machine release];
     [_machineName release];
     [_displayView release];
@@ -180,10 +207,10 @@
     [_runButton release];
     [_resetButton release];
     [_inputField release];
-    free(_memory);
-    free(_cpu);
-    free(_keyboard);
-    free(_vga);
+    if (_runtime) {
+        a5vm_machine_deinit(_runtime);
+        free(_runtime);
+    }
     [super dealloc];
 }
 

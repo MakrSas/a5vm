@@ -1,8 +1,6 @@
 #import <UIKit/UIKit.h>
 
-#include "a5vm/cpu8086.h"
-#include "a5vm/keyboard.h"
-#include "a5vm/vga_text.h"
+#include "a5vm/machine.h"
 
 @class A5VMDisplayView;
 
@@ -14,10 +12,7 @@
     UIButton *_runButton;
     UIButton *_resetButton;
     UITextField *_inputField;
-    a5vm_memory *_memory;
-    a5vm_cpu8086 *_cpu;
-    a5vm_keyboard *_keyboard;
-    a5vm_vga_text *_vga;
+    a5vm_machine *_runtime;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine;
