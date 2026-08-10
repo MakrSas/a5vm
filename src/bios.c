@@ -1,5 +1,6 @@
 #include "a5vm/bios.h"
 
+#include "a5vm/disk.h"
 #include "a5vm/floppy.h"
 #include "a5vm/machine.h"
 #include "a5vm/vga_text.h"
@@ -42,31 +43,74 @@ static int bios_video(a5vm_cpu8086 *cpu, a5vm_machine *machine) {
 static int bios_disk(a5vm_cpu8086 *cpu, a5vm_machine *machine) {
     uint8_t ah = high_byte(cpu->regs[A5VM_REG_AX]);
     uint8_t count = low_byte(cpu->regs[A5VM_REG_AX]);
-    uint8_t cylinder = high_byte(cpu->regs[A5VM_REG_CX]);
+    unsigned cylinder = high_byte(cpu->regs[A5VM_REG_CX]) |
+        ((unsigned)(low_byte(cpu->regs[A5VM_REG_CX]) & 0xC0u) << 2);
     uint8_t sector = low_byte(cpu->regs[A5VM_REG_CX]) & 0x3Fu;
     uint8_t head = high_byte(cpu->regs[A5VM_REG_DX]);
     uint8_t drive = low_byte(cpu->regs[A5VM_REG_DX]);
     uint8_t buffer[A5VM_FLOPPY_SECTOR_SIZE];
-    unsigned lba;
+    uint32_t lba;
+    unsigned heads;
+    unsigned sectors_per_track;
+    int use_hard_disk;
 
-    if (ah != 0x02) return 0;
-    if (count != 1 || drive != 0 || cylinder >= 80 || head >= 2 ||
-        sector == 0 || sector > 18) {
+    if (ah != 0x02 && ah != 0x03) return 0;
+    use_hard_disk = drive == 0x80;
+    if (drive == 0) {
+        heads = 2;
+        sectors_per_track = 18;
+    } else if (use_hard_disk) {
+        heads = 16;
+        sectors_per_track = 63;
+    } else {
         set_carry(cpu, 1);
         set_high_byte(&cpu->regs[A5VM_REG_AX], 0x01);
         return 1;
     }
-    lba = ((unsigned)cylinder * 2u + head) * 18u + (sector - 1u);
-    if (!a5vm_floppy_read_sector(&machine->floppy, lba, buffer)) {
+    if (count != 1 || head >= heads || sector == 0 ||
+        sector > sectors_per_track || (!use_hard_disk && cylinder >= 80)) {
         set_carry(cpu, 1);
-        set_high_byte(&cpu->regs[A5VM_REG_AX], 0x20);
+        set_high_byte(&cpu->regs[A5VM_REG_AX], 0x01);
         return 1;
     }
-    a5vm_memory_load(cpu->memory,
-                     a5vm_cpu8086_linear_address(cpu,
-                                                 cpu->segs[A5VM_SEG_ES],
-                                                 cpu->regs[A5VM_REG_BX]),
-                     buffer, sizeof(buffer));
+    lba = ((uint32_t)cylinder * heads + head) * sectors_per_track +
+          (sector - 1u);
+    if (ah == 0x02) {
+        if (use_hard_disk) {
+            if (!a5vm_disk_read_sector(&machine->disk, lba, buffer)) {
+                set_carry(cpu, 1);
+                set_high_byte(&cpu->regs[A5VM_REG_AX], 0x04);
+                return 1;
+            }
+        } else if (!a5vm_floppy_read_sector(&machine->floppy, lba, buffer)) {
+            set_carry(cpu, 1);
+            set_high_byte(&cpu->regs[A5VM_REG_AX], 0x20);
+            return 1;
+        }
+        a5vm_memory_load(cpu->memory,
+                         a5vm_cpu8086_linear_address(cpu,
+                                                     cpu->segs[A5VM_SEG_ES],
+                                                     cpu->regs[A5VM_REG_BX]),
+                         buffer, sizeof(buffer));
+    } else {
+        uint32_t address = a5vm_cpu8086_linear_address(
+            cpu, cpu->segs[A5VM_SEG_ES], cpu->regs[A5VM_REG_BX]);
+        unsigned index;
+        for (index = 0; index < A5VM_FLOPPY_SECTOR_SIZE; ++index) {
+            buffer[index] = a5vm_memory_read8(cpu->memory, address + index);
+        }
+        if (use_hard_disk) {
+            if (!a5vm_disk_write_sector(&machine->disk, lba, buffer)) {
+                set_carry(cpu, 1);
+                set_high_byte(&cpu->regs[A5VM_REG_AX], 0x04);
+                return 1;
+            }
+        } else if (!a5vm_floppy_write_sector(&machine->floppy, lba, buffer)) {
+            set_carry(cpu, 1);
+            set_high_byte(&cpu->regs[A5VM_REG_AX], 0x20);
+            return 1;
+        }
+    }
     set_carry(cpu, 0);
     set_high_byte(&cpu->regs[A5VM_REG_AX], 0x00);
     return 1;

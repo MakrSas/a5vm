@@ -200,6 +200,33 @@ static void test_floppy_and_boot(void) {
         CHECK(a5vm_memory_read8(&machine.memory, 0x8000) == 0xB4);
         CHECK((machine.cpu.flags & A5VM_FLAG_CF) == 0);
     }
+
+    {
+        static const uint8_t hard_disk_read_program[] = {
+            0xB8, 0x01, 0x02,       /* mov ax, 0201h: read one sector */
+            0xB9, 0x01, 0x00,       /* mov cx, 0001h */
+            0xBA, 0x80, 0x00,       /* mov dx, 0080h: first hard disk */
+            0xBB, 0x00, 0x90,       /* mov bx, 9000h */
+            0xCD, 0x13,
+            0xF4
+        };
+        uint8_t hard_disk_sector[A5VM_DISK_SECTOR_SIZE] = { 0 };
+        hard_disk_sector[0] = 0xDE;
+        hard_disk_sector[1] = 0xAD;
+        CHECK(a5vm_disk_write_sector(&machine.disk, 0, hard_disk_sector));
+        a5vm_machine_reset(&machine);
+        a5vm_memory_load(&machine.memory, 0x1100,
+                         hard_disk_read_program,
+                         sizeof(hard_disk_read_program));
+        machine.cpu.segs[A5VM_SEG_CS] = 0;
+        machine.cpu.segs[A5VM_SEG_ES] = 0;
+        machine.cpu.ip = 0x1100;
+        status = a5vm_cpu8086_run(&machine.cpu, 100);
+        CHECK(status == A5VM_CPU_HALTED);
+        CHECK(a5vm_memory_read8(&machine.memory, 0x9000) == 0xDE);
+        CHECK(a5vm_memory_read8(&machine.memory, 0x9001) == 0xAD);
+        CHECK((machine.cpu.flags & A5VM_FLAG_CF) == 0);
+    }
     a5vm_machine_deinit(&machine);
 }
 

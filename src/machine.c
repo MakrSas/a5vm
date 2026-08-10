@@ -6,12 +6,17 @@
 int a5vm_machine_init(a5vm_machine *machine) {
     memset(machine, 0, sizeof(*machine));
     if (!a5vm_floppy_init(&machine->floppy, 0)) return 0;
+    if (!a5vm_disk_init(&machine->disk, 0)) {
+        a5vm_floppy_deinit(&machine->floppy);
+        return 0;
+    }
     a5vm_floppy_create_demo(&machine->floppy);
     a5vm_machine_reset(machine);
     return 1;
 }
 
 void a5vm_machine_deinit(a5vm_machine *machine) {
+    a5vm_disk_deinit(&machine->disk);
     a5vm_floppy_deinit(&machine->floppy);
 }
 
