@@ -32,8 +32,8 @@
     if (!font) font = [UIFont systemFontOfSize:16.0f];
     [_displayText drawInRect:CGRectInset(self.bounds, 16.0f, 16.0f)
                     withFont:font
-               lineBreakMode:UILineBreakModeWordWrap
-                   alignment:UITextAlignmentLeft];
+               lineBreakMode:NSLineBreakByWordWrapping
+                   alignment:NSTextAlignmentLeft];
 }
 
 - (void)dealloc {
