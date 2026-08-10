@@ -27,17 +27,19 @@
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     (void)tableView;
-    return 2;
+    return 3;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? 3 : 3;
+    return 1 + (section == 0 ? 2 : (section == 1 ? 2 : 0));
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? @"General" : @"Hardware & Devices";
+    if (section == 0) return @"General";
+    if (section == 1) return @"Hardware & Devices";
+    return @"Runtime";
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView
@@ -48,11 +50,24 @@
         cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
                                        reuseIdentifier:CellIdentifier] autorelease];
         cell.textLabel.textColor = [UIColor darkTextColor];
-        cell.detailTextLabel.textColor = [UIColor grayColor];
     }
+    cell.detailTextLabel.textColor = [UIColor grayColor];
 
     NSString *key = nil;
     NSString *label = nil;
+    if (indexPath.section == 2) {
+        key = @"capability";
+        label = @"Status";
+        cell.textLabel.text = label;
+        cell.detailTextLabel.text = [_machine objectForKey:key];
+        cell.accessoryType = UITableViewCellAccessoryNone;
+        if ([[_machine objectForKey:key] isEqualToString:@"Ready for floppy boot"]) {
+            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.10f green:0.55f blue:0.15f alpha:1.0f];
+        } else {
+            cell.detailTextLabel.textColor = [UIColor colorWithRed:0.75f green:0.35f blue:0.05f alpha:1.0f];
+        }
+        return cell;
+    }
     if (indexPath.section == 0 && indexPath.row == 0) {
         key = @"name";
         label = @"Name";
@@ -120,6 +135,15 @@
 
 - (void)runMachine:(id)sender {
     (void)sender;
+    if (![[_machine objectForKey:@"capability"] isEqualToString:@"Ready for floppy boot"]) {
+        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Preset not available yet"
+                                                         message:[_machine objectForKey:@"capability"]
+                                                        delegate:nil
+                                               cancelButtonTitle:@"OK"
+                                               otherButtonTitles:nil] autorelease];
+        [alert show];
+        return;
+    }
     A5VMViewController *runner = [[[A5VMViewController alloc] initWithMachine:_machine] autorelease];
     [self.navigationController pushViewController:runner animated:YES];
 }

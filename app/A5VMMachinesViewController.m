@@ -54,6 +54,9 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
         if ([[machine objectForKey:@"osVersion"] length] == 0) {
             [machine setObject:@"8086 Demo" forKey:@"osVersion"];
         }
+        if ([[machine objectForKey:@"capability"] length] == 0) {
+            [machine setObject:@"Ready for floppy boot" forKey:@"capability"];
+        }
         if ([[machine objectForKey:@"diskImage"] length] == 0) {
             [machine setObject:[NSString stringWithFormat:@"machine-%lu.dsk",
                                 (unsigned long)index + 1ul]
@@ -74,6 +77,7 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
             @"VGA Text", @"display",
             @"1.44 MB floppy", @"storage",
             @"8086-demo.dsk", @"diskImage",
+            @"Ready for floppy boot", @"capability",
             nil];
 }
 
