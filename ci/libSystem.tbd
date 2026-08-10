@@ -1,9 +1,9 @@
---- !tapi-tbd
-tbd-version: 4
-targets: [ armv7-ios ]
-install-name: '/usr/lib/libSystem.B.dylib'
+---
+archs: [ armv7 ]
+platform: ios
+install-name: /usr/lib/libSystem.B.dylib
 current-version: 1.0.0
 compatibility-version: 1.0.0
 exports:
-  - targets: [ armv7-ios ]
+  - archs: [ armv7 ]
     symbols: []
