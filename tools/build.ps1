@@ -18,7 +18,8 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 $common = @('-std=c11', '-Wall', '-Wextra', '-Werror', '-I', (Join-Path $root 'include'))
 $sources = @((Join-Path $root 'src\memory.c'), (Join-Path $root 'src\cpu8086.c'),
     (Join-Path $root 'src\vga_text.c'), (Join-Path $root 'src\keyboard.c'),
-    (Join-Path $root 'src\floppy.c'), (Join-Path $root 'src\machine.c'))
+    (Join-Path $root 'src\floppy.c'), (Join-Path $root 'src\bios.c'),
+    (Join-Path $root 'src\machine.c'))
 
 & $compiler @common @sources (Join-Path $root 'src\main.c') '-o' (Join-Path $build 'a5vm-demo.exe')
 if ($LASTEXITCODE -ne 0) { throw 'demo build failed' }

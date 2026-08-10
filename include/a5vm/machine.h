@@ -8,7 +8,7 @@
 
 #define A5VM_BOOT_ADDRESS 0x7C00u
 
-typedef struct {
+typedef struct a5vm_machine {
     a5vm_memory memory;
     a5vm_cpu8086 cpu;
     a5vm_keyboard keyboard;

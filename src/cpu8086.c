@@ -180,6 +180,13 @@ void a5vm_cpu8086_reset(a5vm_cpu8086 *cpu) {
     cpu->fault[0] = '\0';
 }
 
+void a5vm_cpu8086_set_interrupt_handler(a5vm_cpu8086 *cpu,
+                                         a5vm_cpu_interrupt_handler handler,
+                                         void *context) {
+    cpu->interrupt_handler = handler;
+    cpu->interrupt_context = context;
+}
+
 const char *a5vm_cpu8086_fault(const a5vm_cpu8086 *cpu) {
     return cpu->fault;
 }
@@ -277,8 +284,13 @@ a5vm_cpu_status a5vm_cpu8086_step(a5vm_cpu8086 *cpu) {
         return cpu->status;
     }
     if (opcode == 0xCD) {
+        uint8_t vector = fetch8(cpu);
+        if (cpu->interrupt_handler &&
+            cpu->interrupt_handler(cpu, vector, cpu->interrupt_context)) {
+            return cpu->status;
+        }
         faultf(cpu, A5VM_CPU_UNIMPLEMENTED,
-               "interrupt 0x%02X has no BIOS device yet", fetch8(cpu));
+               "interrupt 0x%02X has no BIOS device yet", vector);
         return cpu->status;
     }
     faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "opcode 0x%02X at CS:IP %04X:%04X",

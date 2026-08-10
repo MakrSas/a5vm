@@ -31,7 +31,11 @@ typedef enum {
     A5VM_CPU_UNIMPLEMENTED = 3
 } a5vm_cpu_status;
 
-typedef struct {
+typedef struct a5vm_cpu8086 a5vm_cpu8086;
+typedef int (*a5vm_cpu_interrupt_handler)(a5vm_cpu8086 *cpu,
+                                          uint8_t vector, void *context);
+
+struct a5vm_cpu8086 {
     uint16_t regs[A5VM_REG_COUNT];
     uint16_t segs[A5VM_SEG_COUNT];
     uint16_t ip;
@@ -40,10 +44,15 @@ typedef struct {
     a5vm_cpu_status status;
     char fault[128];
     a5vm_memory *memory;
-} a5vm_cpu8086;
+    a5vm_cpu_interrupt_handler interrupt_handler;
+    void *interrupt_context;
+};
 
 void a5vm_cpu8086_init(a5vm_cpu8086 *cpu, a5vm_memory *memory);
 void a5vm_cpu8086_reset(a5vm_cpu8086 *cpu);
+void a5vm_cpu8086_set_interrupt_handler(a5vm_cpu8086 *cpu,
+                                         a5vm_cpu_interrupt_handler handler,
+                                         void *context);
 a5vm_cpu_status a5vm_cpu8086_step(a5vm_cpu8086 *cpu);
 a5vm_cpu_status a5vm_cpu8086_run(a5vm_cpu8086 *cpu, uint64_t max_steps);
 uint32_t a5vm_cpu8086_linear_address(const a5vm_cpu8086 *cpu,

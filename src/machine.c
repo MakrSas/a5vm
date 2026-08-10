@@ -1,4 +1,5 @@
 #include "a5vm/machine.h"
+#include "a5vm/bios.h"
 
 #include <string.h>
 
@@ -17,6 +18,8 @@ void a5vm_machine_deinit(a5vm_machine *machine) {
 void a5vm_machine_reset(a5vm_machine *machine) {
     a5vm_memory_init(&machine->memory);
     a5vm_cpu8086_init(&machine->cpu, &machine->memory);
+    a5vm_cpu8086_set_interrupt_handler(&machine->cpu,
+                                       a5vm_bios_handle_interrupt, machine);
     a5vm_keyboard_init(&machine->keyboard);
     a5vm_vga_text_init(&machine->vga);
 }
