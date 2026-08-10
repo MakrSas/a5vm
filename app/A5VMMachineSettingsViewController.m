@@ -32,7 +32,7 @@
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     (void)tableView;
-    return section == 0 ? 2 : 3;
+    return section == 0 ? 3 : 3;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
@@ -57,8 +57,12 @@
         key = @"name";
         label = @"Name";
     } else if (indexPath.section == 0) {
-        key = @"architecture";
-        label = @"Architecture";
+        key = @"osVersion";
+        label = @"Operating System";
+        if (indexPath.row == 2) {
+            key = @"architecture";
+            label = @"Architecture";
+        }
     } else if (indexPath.row == 0) {
         key = @"ram";
         label = @"Memory";

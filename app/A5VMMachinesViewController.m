@@ -48,6 +48,12 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
         if ([[machine objectForKey:@"storage"] length] == 0) {
             [machine setObject:@"1.44 MB floppy" forKey:@"storage"];
         }
+        if ([[machine objectForKey:@"osFamily"] length] == 0) {
+            [machine setObject:@"DOS" forKey:@"osFamily"];
+        }
+        if ([[machine objectForKey:@"osVersion"] length] == 0) {
+            [machine setObject:@"8086 Demo" forKey:@"osVersion"];
+        }
         if ([[machine objectForKey:@"diskImage"] length] == 0) {
             [machine setObject:[NSString stringWithFormat:@"machine-%lu.dsk",
                                 (unsigned long)index + 1ul]
@@ -61,6 +67,8 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
 - (NSDictionary *)defaultMachine {
     return [NSDictionary dictionaryWithObjectsAndKeys:
             @"8086 Demo PC", @"name",
+            @"DOS", @"osFamily",
+            @"8086 Demo", @"osVersion",
             @"8086", @"architecture",
             @"640 KB", @"ram",
             @"VGA Text", @"display",
@@ -77,16 +85,9 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
 
 - (void)addMachine:(id)sender {
     (void)sender;
-    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"New Machine"
-                                                     message:@"Choose a name for the virtual machine."
-                                                    delegate:self
-                                           cancelButtonTitle:@"Cancel"
-                                           otherButtonTitles:@"Create", nil] autorelease];
-    alert.alertViewStyle = UIAlertViewStylePlainTextInput;
-    UITextField *field = [alert textFieldAtIndex:0];
-    field.placeholder = @"My 8086 PC";
-    field.autocapitalizationType = UITextAutocapitalizationTypeWords;
-    [alert show];
+    A5VMNewMachineViewController *wizard =
+        [[[A5VMNewMachineViewController alloc] initWithDelegate:self] autorelease];
+    [self.navigationController pushViewController:wizard animated:YES];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
@@ -109,8 +110,10 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
 
     NSDictionary *machine = [self.machines objectAtIndex:indexPath.row];
     cell.textLabel.text = [machine objectForKey:@"name"];
+    NSString *os = [machine objectForKey:@"osVersion"];
+    if ([os length] == 0) os = [machine objectForKey:@"architecture"];
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  -  %@  -  %@",
-                                 [machine objectForKey:@"architecture"],
+                                 os,
                                  [machine objectForKey:@"ram"],
                                  [machine objectForKey:@"display"]];
     return cell;
@@ -136,6 +139,19 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
     [self.tableView reloadData];
 }
 
+- (void)newMachineController:(A5VMNewMachineViewController *)controller
+             didCreateMachine:(NSDictionary *)machine {
+    (void)controller;
+    NSMutableDictionary *created = [NSMutableDictionary dictionaryWithDictionary:machine];
+    NSString *diskImage = [NSString stringWithFormat:@"machine-%lu.dsk",
+                           (unsigned long)[self.machines count] + 1ul];
+    [created setObject:diskImage forKey:@"diskImage"];
+    [self.machines addObject:created];
+    [self saveMachines];
+    [self.tableView reloadData];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 - (void)tableView:(UITableView *)tableView
 commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
  forRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -153,27 +169,6 @@ commitEditingStyle:(UITableViewCellEditingStyle)editingStyle
     [self saveMachines];
     [tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:indexPath]
                      withRowAnimation:UITableViewRowAnimationAutomatic];
-}
-
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    if (buttonIndex == alertView.cancelButtonIndex) return;
-    NSString *name = [[alertView textFieldAtIndex:0].text
-                      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    if ([name length] == 0) name = @"8086 PC";
-
-    NSString *diskImage = [NSString stringWithFormat:@"machine-%lu.dsk",
-                           (unsigned long)[self.machines count] + 1ul];
-    NSDictionary *machine = [NSDictionary dictionaryWithObjectsAndKeys:
-                             name, @"name",
-                             @"8086", @"architecture",
-                             @"640 KB", @"ram",
-                             @"VGA Text", @"display",
-                             @"1.44 MB floppy", @"storage",
-                             diskImage, @"diskImage",
-                             nil];
-    [self.machines addObject:machine];
-    [self saveMachines];
-    [self.tableView reloadData];
 }
 
 - (void)dealloc {
