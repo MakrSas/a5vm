@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Build demo
         run: |
@@ -53,6 +55,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install build tools
         env:
@@ -97,4 +101,50 @@ jobs:
         with:
           name: a5vm-ios6-gui-${{ github.sha }}
           path: build/a5vm-ios6-gui.zip
+          if-no-files-found: error
+
+  qemu-native-smoke:
+    name: UTM QEMU i386 smoke build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source and QEMU fork
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install QEMU build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libpixman-1-dev ninja-build
+
+      - name: Build QEMU i386 system emulator
+        working-directory: third_party/qemu
+        run: |
+          ./configure \
+            --target-list=i386-softmmu \
+            --disable-werror \
+            --disable-docs \
+            --disable-gtk \
+            --disable-sdl \
+            --disable-curses \
+            --disable-vnc \
+            --disable-spice \
+            --disable-opengl \
+            --disable-virtfs \
+            --disable-slirp \
+            --disable-fdt \
+            --disable-capstone \
+            --disable-tools
+          make -j2 qemu-system-i386
+
+      - name: Run QEMU smoke check
+        working-directory: third_party/qemu
+        run: |
+          ./i386-softmmu/qemu-system-i386 --version
+
+      - name: Upload QEMU smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a5vm-qemu-i386-${{ github.sha }}
+          path: third_party/qemu/i386-softmmu/qemu-system-i386
           if-no-files-found: error

@@ -1,0 +1,4 @@
+[submodule "third_party/qemu"]
+	path = third_party/qemu
+	url = https://github.com/utmapp/qemu.git
+	branch = ios-support-v5.1.0
