@@ -129,6 +129,27 @@ static void test_pic_and_pit(void) {
     CHECK(pit.ticks == 3);
 }
 
+static void test_hardware_interrupt_delivery(void) {
+    a5vm_machine machine;
+    static const uint8_t program[] = { 0xFB, 0x90, 0xF4 };
+    static const uint8_t handler[] = { 0xB8, 0x34, 0x12, 0xF4 };
+    CHECK(a5vm_machine_init(&machine));
+    a5vm_memory_write16(&machine.memory, 0x20, 0x3000);
+    a5vm_memory_write16(&machine.memory, 0x22, 0x0000);
+    a5vm_memory_load(&machine.memory, 0x1000, program, sizeof(program));
+    a5vm_memory_load(&machine.memory, 0x3000, handler, sizeof(handler));
+    machine.cpu.segs[A5VM_SEG_CS] = 0;
+    machine.cpu.segs[A5VM_SEG_SS] = 0;
+    machine.cpu.ip = 0x1000;
+    machine.cpu.regs[A5VM_REG_SP] = 0x8000;
+    a5vm_pit8253_init(&machine.pit, 1);
+    a5vm_pic8259_set_mask(&machine.pic, 0, 1);
+    CHECK(a5vm_machine_run(&machine, 20) == A5VM_CPU_HALTED);
+    CHECK(machine.cpu.regs[A5VM_REG_AX] == 0x1234);
+    CHECK(machine.cpu.segs[A5VM_SEG_CS] == 0);
+    a5vm_machine_deinit(&machine);
+}
+
 static void test_floppy_and_boot(void) {
     a5vm_floppy floppy;
     a5vm_machine machine;
@@ -189,6 +210,7 @@ int main(void) {
     test_vga_text();
     test_keyboard();
     test_pic_and_pit();
+    test_hardware_interrupt_delivery();
     test_floppy_and_boot();
     if (failures != 0) {
         fprintf(stderr, "%d test(s) failed\n", failures);

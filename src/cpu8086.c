@@ -187,6 +187,27 @@ void a5vm_cpu8086_set_interrupt_handler(a5vm_cpu8086 *cpu,
     cpu->interrupt_context = context;
 }
 
+void a5vm_cpu8086_deliver_interrupt(a5vm_cpu8086 *cpu, uint8_t vector) {
+    uint32_t ivt = (uint32_t)vector * 4u;
+    uint32_t stack;
+
+    cpu->regs[A5VM_REG_SP] = (uint16_t)(cpu->regs[A5VM_REG_SP] - 2u);
+    stack = a5vm_cpu8086_linear_address(cpu, cpu->segs[A5VM_SEG_SS],
+                                        cpu->regs[A5VM_REG_SP]);
+    a5vm_memory_write16(cpu->memory, stack, cpu->flags);
+    cpu->regs[A5VM_REG_SP] = (uint16_t)(cpu->regs[A5VM_REG_SP] - 2u);
+    stack = a5vm_cpu8086_linear_address(cpu, cpu->segs[A5VM_SEG_SS],
+                                        cpu->regs[A5VM_REG_SP]);
+    a5vm_memory_write16(cpu->memory, stack, cpu->segs[A5VM_SEG_CS]);
+    cpu->regs[A5VM_REG_SP] = (uint16_t)(cpu->regs[A5VM_REG_SP] - 2u);
+    stack = a5vm_cpu8086_linear_address(cpu, cpu->segs[A5VM_SEG_SS],
+                                        cpu->regs[A5VM_REG_SP]);
+    a5vm_memory_write16(cpu->memory, stack, cpu->ip);
+    cpu->flags = (uint16_t)(cpu->flags & (uint16_t)~A5VM_FLAG_IF);
+    cpu->segs[A5VM_SEG_CS] = a5vm_memory_read16(cpu->memory, ivt + 2u);
+    cpu->ip = a5vm_memory_read16(cpu->memory, ivt);
+}
+
 const char *a5vm_cpu8086_fault(const a5vm_cpu8086 *cpu) {
     return cpu->fault;
 }
@@ -200,6 +221,14 @@ a5vm_cpu_status a5vm_cpu8086_step(a5vm_cpu8086 *cpu) {
     cpu->steps++;
     if (opcode == 0x90) return cpu->status;
     if (opcode == 0xF4) { cpu->status = A5VM_CPU_HALTED; return cpu->status; }
+    if (opcode == 0xFA) {
+        cpu->flags = (uint16_t)(cpu->flags & (uint16_t)~A5VM_FLAG_IF);
+        return cpu->status;
+    }
+    if (opcode == 0xFB) {
+        cpu->flags = (uint16_t)(cpu->flags | A5VM_FLAG_IF);
+        return cpu->status;
+    }
     if (opcode >= 0xB0 && opcode <= 0xB7) {
         set_reg8(cpu, opcode - 0xB0, fetch8(cpu));
         return cpu->status;

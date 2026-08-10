@@ -53,6 +53,7 @@ void a5vm_cpu8086_reset(a5vm_cpu8086 *cpu);
 void a5vm_cpu8086_set_interrupt_handler(a5vm_cpu8086 *cpu,
                                          a5vm_cpu_interrupt_handler handler,
                                          void *context);
+void a5vm_cpu8086_deliver_interrupt(a5vm_cpu8086 *cpu, uint8_t vector);
 a5vm_cpu_status a5vm_cpu8086_step(a5vm_cpu8086 *cpu);
 a5vm_cpu_status a5vm_cpu8086_run(a5vm_cpu8086 *cpu, uint64_t max_steps);
 uint32_t a5vm_cpu8086_linear_address(const a5vm_cpu8086 *cpu,

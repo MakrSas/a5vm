@@ -37,6 +37,12 @@ a5vm_cpu_status a5vm_machine_run(a5vm_machine *machine,
                                   uint64_t max_steps) {
     uint64_t steps = 0;
     while (machine->cpu.status == A5VM_CPU_RUNNING && steps < max_steps) {
+        uint8_t vector;
+        if ((machine->cpu.flags & A5VM_FLAG_IF) != 0 &&
+            a5vm_pic8259_acknowledge(&machine->pic, &vector)) {
+            a5vm_cpu8086_deliver_interrupt(&machine->cpu, vector);
+            continue;
+        }
         a5vm_cpu8086_step(&machine->cpu);
         a5vm_machine_tick(machine, 1);
         steps++;
