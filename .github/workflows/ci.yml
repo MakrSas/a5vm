@@ -68,25 +68,29 @@ jobs:
           cat "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip."* > "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip"
           mkdir -p "$RUNNER_TEMP/iphone-sdk"
           unzip -q "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip" -d "$RUNNER_TEMP/iphone-sdk"
-
-      - name: Build ARMv7 iOS tool
-        run: |
-          mkdir -p build/ios-armv7
+          export THEOS="$RUNNER_TEMP/theos"
+          git clone --depth 1 https://github.com/theos/theos.git "$THEOS"
+          "$THEOS/bin/update-theos"
+          mkdir -p "$THEOS/sdks"
           SDK=$(find "$RUNNER_TEMP/iphone-sdk" -type d -name iPhoneOS6.1.sdk -print -quit)
           test -n "$SDK"
-          clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
-            -miphoneos-version-min=6.0 -Iinclude \
-            -c src/memory.c src/cpu8086.c src/main.c
-          clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
-            -miphoneos-version-min=6.0 \
-            memory.o cpu8086.o main.o \
-            -o build/ios-armv7/a5vm
-          ldid -S build/ios-armv7/a5vm
-          file build/ios-armv7/a5vm
+          cp -R "$SDK" "$THEOS/sdks/iPhoneOS6.1.sdk"
+          echo "THEOS=$THEOS" >> "$GITHUB_ENV"
 
-      - name: Upload iOS ARMv7 artifact
+      - name: Build iOS 6 GUI app
+        run: |
+          make -f Makefile.ios THEOS="$THEOS" clean package
+          app=$(find .theos -type d -name A5VM.app -print -quit)
+          test -n "$app"
+          mkdir -p build/ios6-gui
+          cp -R "$app" build/ios6-gui/A5VM.app
+          ldid -S build/ios6-gui/A5VM.app/A5VM
+          /usr/bin/zip -qry build/a5vm-ios6-gui.zip build/ios6-gui/A5VM.app
+          file build/ios6-gui/A5VM.app/A5VM
+
+      - name: Upload iOS 6 GUI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: a5vm-ios6-armv7-${{ github.sha }}
-          path: build/ios-armv7/a5vm
+          name: a5vm-ios6-gui-${{ github.sha }}
+          path: build/a5vm-ios6-gui.zip
           if-no-files-found: error
