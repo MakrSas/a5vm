@@ -55,41 +55,30 @@ jobs:
       - name: Install build tools
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
-        run: brew install ldid xz
+        run: brew install ldid
 
-      - name: Install Theos and iPhoneOS SDK
-        env:
-          THEOS: ${{ runner.temp }}/theos
+      - name: Download iPhoneOS 6.1 SDK
         run: |
-          git clone --depth 1 https://github.com/theos/theos.git "$THEOS"
-          "$THEOS/bin/update-theos"
-          mkdir -p "$THEOS/sdks"
-          curl -L --fail --retry 3 \
-            https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS9.3.sdk.tar.xz \
-            -o "$RUNNER_TEMP/iPhoneOS9.3.sdk.tar.xz"
-          tar -xJf "$RUNNER_TEMP/iPhoneOS9.3.sdk.tar.xz" -C "$THEOS/sdks"
+          git clone --filter=blob:none --no-checkout --depth 1 \
+            https://github.com/Sn0wCooder/theos-sdks.git "$RUNNER_TEMP/theos-sdks"
+          git -C "$RUNNER_TEMP/theos-sdks" sparse-checkout init --cone
+          git -C "$RUNNER_TEMP/theos-sdks" sparse-checkout set iPhoneOS6.1.sdk
+          cat "$RUNNER_TEMP/theos-sdks/iPhoneOS6.1.sdk/iPhoneOS6.1.sdk.zip."* \
+            > "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip"
+          mkdir -p "$RUNNER_TEMP/iphone-sdk"
+          unzip -q "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip" -d "$RUNNER_TEMP/iphone-sdk"
 
       - name: Build ARMv7 iOS tool
-        env:
-          THEOS: ${{ runner.temp }}/theos
         run: |
           mkdir -p build/ios-armv7
-          SDK="$THEOS/sdks/iPhoneOS9.3.sdk"
-          mkdir -p "$RUNNER_TEMP/libsystem-stub"
+          SDK=$(find "$RUNNER_TEMP/iphone-sdk" -type d -name iPhoneOS6.1.sdk -print -quit)
+          test -n "$SDK"
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
-            -miphoneos-version-min=6.0 -nostdlib -fno-stack-protector \
-            -dynamiclib -Wl,-install_name,/usr/lib/libSystem.dylib \
-            ci/libSystem_stub.c -o "$RUNNER_TEMP/libsystem-stub/libSystem.dylib"
+            -miphoneos-version-min=6.0 -Iinclude \
+            -c src/memory.c src/cpu8086.c src/main.c
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
-            -miphoneos-version-min=6.0 -fno-stack-protector -ffreestanding \
-            -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
-            -Iinclude -c src/memory.c src/cpu8086.c src/freestanding.c \
-            src/ios_main.c src/ios_start.c
-          clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
-            -miphoneos-version-min=6.0 -nostdlib -Wl,-e,_start \
-            -Wl,-dylib_file,/usr/lib/libSystem.dylib:$RUNNER_TEMP/libsystem-stub/libSystem.dylib \
-            -L"$RUNNER_TEMP/libsystem-stub" -lSystem \
-            memory.o cpu8086.o freestanding.o ios_main.o ios_start.o \
+            -miphoneos-version-min=6.0 \
+            memory.o cpu8086.o main.o \
             -o build/ios-armv7/a5vm
           ldid -S build/ios-armv7/a5vm
           file build/ios-armv7/a5vm
