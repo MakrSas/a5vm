@@ -135,7 +135,7 @@ jobs:
             --disable-fdt \
             --disable-capstone \
             --disable-tools
-          make -C i386-softmmu -j2 qemu-system-i386
+          make -j2 i386-softmmu/all
 
       - name: Run QEMU smoke check
         working-directory: third_party/qemu
