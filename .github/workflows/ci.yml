@@ -71,11 +71,16 @@ jobs:
         env:
           THEOS: ${{ runner.temp }}/theos
         run: |
-          make THEOS="$THEOS" clean all
           mkdir -p build/ios-armv7
-          tool=$(find .theos -type f -name a5vm -perm -111 | head -n 1)
-          test -n "$tool"
-          cp "$tool" build/ios-armv7/a5vm
+          SDK="$THEOS/sdks/iPhoneOS9.3.sdk"
+          clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
+            -miphoneos-version-min=6.0 -fno-stack-protector -ffreestanding \
+            -Iinclude -c src/memory.c src/cpu8086.c src/freestanding.c \
+            src/ios_main.c src/ios_start.c
+          clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
+            -miphoneos-version-min=6.0 -nostdlib -Wl,-e,_start \
+            memory.o cpu8086.o freestanding.o ios_main.o ios_start.o \
+            -o build/ios-armv7/a5vm
           ldid -S build/ios-armv7/a5vm
           file build/ios-armv7/a5vm
 
