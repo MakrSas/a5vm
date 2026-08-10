@@ -6,7 +6,7 @@
 
 @class A5VMDisplayView;
 
-@interface A5VMViewController : UIViewController {
+@interface A5VMViewController : UIViewController <UITextFieldDelegate> {
     NSDictionary *_machine;
     NSString *_machineName;
     A5VMDisplayView *_displayView;
