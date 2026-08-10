@@ -44,3 +44,43 @@ jobs:
             build/a5vm-demo
             build/a5vm-tests
           if-no-files-found: error
+
+  ios-armv7:
+    name: iOS 6 ARMv7 tool
+    runs-on: macos-13
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install ldid xz
+
+      - name: Install Theos and iPhoneOS SDK
+        env:
+          THEOS: ${{ runner.temp }}/theos
+        run: |
+          git clone --depth 1 https://github.com/theos/theos.git "$THEOS"
+          mkdir -p "$THEOS/sdks"
+          curl -L --fail --retry 3 \
+            https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS9.3.sdk.tar.xz \
+            -o "$RUNNER_TEMP/iPhoneOS9.3.sdk.tar.xz"
+          tar -xJf "$RUNNER_TEMP/iPhoneOS9.3.sdk.tar.xz" -C "$THEOS/sdks"
+
+      - name: Build ARMv7 iOS tool
+        env:
+          THEOS: ${{ runner.temp }}/theos
+        run: |
+          make THEOS="$THEOS" clean all
+          mkdir -p build/ios-armv7
+          tool=$(find .theos -type f -name a5vm -perm -111 | head -n 1)
+          test -n "$tool"
+          cp "$tool" build/ios-armv7/a5vm
+          ldid -S build/ios-armv7/a5vm
+          file build/ios-armv7/a5vm
+
+      - name: Upload iOS ARMv7 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a5vm-ios6-armv7-${{ github.sha }}
+          path: build/ios-armv7/a5vm
+          if-no-files-found: error
