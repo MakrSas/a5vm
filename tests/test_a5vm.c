@@ -227,6 +227,50 @@ static void test_floppy_and_boot(void) {
         CHECK(a5vm_memory_read8(&machine.memory, 0x9001) == 0xAD);
         CHECK((machine.cpu.flags & A5VM_FLAG_CF) == 0);
     }
+
+    {
+        static const uint8_t ide_pio_program[] = {
+            0xBA, 0xF2, 0x01,       /* mov dx, 01F2h: sector count */
+            0xB0, 0x01, 0xEE,       /* mov al, 1; out dx, al */
+            0xBA, 0xF3, 0x01,       /* LBA low */
+            0xB0, 0x00, 0xEE,
+            0xBA, 0xF4, 0x01,       /* LBA mid */
+            0xB0, 0x00, 0xEE,
+            0xBA, 0xF5, 0x01,       /* LBA high */
+            0xB0, 0x00, 0xEE,
+            0xBA, 0xF6, 0x01,       /* master drive, LBA mode */
+            0xB0, 0xE0, 0xEE,
+            0xBA, 0xF7, 0x01,       /* READ SECTORS */
+            0xB0, 0x20, 0xEE,
+            0xBA, 0xF0, 0x01,       /* data port */
+            0xED,                   /* in ax, dx: DE AD */
+            0xBB, 0x00, 0x90,
+            0x89, 0x07,             /* mov [bx], ax */
+            0xBA, 0xF3, 0x01,       /* select LBA 1 */
+            0xB0, 0x01, 0xEE,
+            0xBA, 0xF7, 0x01,       /* WRITE SECTORS */
+            0xB0, 0x30, 0xEE,
+            0xBA, 0xF0, 0x01,
+            0xB8, 0xDE, 0xAD,       /* data word */
+            0xB9, 0x00, 0x01,       /* 256 words = one sector */
+            0xEF,
+            0x49,
+            0x75, 0xFC,             /* loop until CX == 0 */
+            0xF4
+        };
+        uint8_t written[A5VM_DISK_SECTOR_SIZE] = { 0 };
+        a5vm_machine_reset(&machine);
+        a5vm_memory_load(&machine.memory, 0x1200,
+                         ide_pio_program, sizeof(ide_pio_program));
+        machine.cpu.segs[A5VM_SEG_CS] = 0;
+        machine.cpu.ip = 0x1200;
+        status = a5vm_cpu8086_run(&machine.cpu, 200);
+        CHECK(status == A5VM_CPU_HALTED);
+        CHECK(a5vm_memory_read8(&machine.memory, 0x9000) == 0xDE);
+        CHECK(a5vm_memory_read8(&machine.memory, 0x9001) == 0xAD);
+        CHECK(a5vm_disk_read_sector(&machine.disk, 1, written));
+        CHECK(written[0] == 0xDE && written[1] == 0xAD);
+    }
     a5vm_machine_deinit(&machine);
 }
 

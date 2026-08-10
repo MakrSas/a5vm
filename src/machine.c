@@ -3,6 +3,22 @@
 
 #include <string.h>
 
+static uint8_t machine_io_read8(a5vm_cpu8086 *cpu, uint16_t port,
+                                void *context) {
+    a5vm_machine *machine = (a5vm_machine *)context;
+    uint8_t value = 0xFF;
+    (void)cpu;
+    (void)a5vm_ide_read8(&machine->ide, port, &value);
+    return value;
+}
+
+static void machine_io_write8(a5vm_cpu8086 *cpu, uint16_t port,
+                              uint8_t value, void *context) {
+    a5vm_machine *machine = (a5vm_machine *)context;
+    (void)cpu;
+    (void)a5vm_ide_write8(&machine->ide, port, value);
+}
+
 int a5vm_machine_init(a5vm_machine *machine) {
     memset(machine, 0, sizeof(*machine));
     if (!a5vm_floppy_init(&machine->floppy, 0)) return 0;
@@ -10,6 +26,7 @@ int a5vm_machine_init(a5vm_machine *machine) {
         a5vm_floppy_deinit(&machine->floppy);
         return 0;
     }
+    a5vm_ide_init(&machine->ide, &machine->disk);
     a5vm_floppy_create_demo(&machine->floppy);
     a5vm_machine_reset(machine);
     return 1;
@@ -25,6 +42,9 @@ void a5vm_machine_reset(a5vm_machine *machine) {
     a5vm_cpu8086_init(&machine->cpu, &machine->memory);
     a5vm_cpu8086_set_interrupt_handler(&machine->cpu,
                                        a5vm_bios_handle_interrupt, machine);
+    a5vm_ide_reset(&machine->ide);
+    a5vm_cpu8086_set_io_handlers(&machine->cpu, machine_io_read8,
+                                 machine_io_write8, machine);
     a5vm_keyboard_init(&machine->keyboard);
     a5vm_vga_text_init(&machine->vga);
     a5vm_pic8259_init(&machine->pic, 0x08);

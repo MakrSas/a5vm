@@ -208,6 +208,15 @@ void a5vm_cpu8086_deliver_interrupt(a5vm_cpu8086 *cpu, uint8_t vector) {
     cpu->ip = a5vm_memory_read16(cpu->memory, ivt);
 }
 
+void a5vm_cpu8086_set_io_handlers(a5vm_cpu8086 *cpu,
+                                  a5vm_cpu_io_read8_handler read8,
+                                  a5vm_cpu_io_write8_handler write8,
+                                  void *context) {
+    cpu->io_read8 = read8;
+    cpu->io_write8 = write8;
+    cpu->io_context = context;
+}
+
 const char *a5vm_cpu8086_fault(const a5vm_cpu8086 *cpu) {
     return cpu->fault;
 }
@@ -227,6 +236,39 @@ a5vm_cpu_status a5vm_cpu8086_step(a5vm_cpu8086 *cpu) {
     }
     if (opcode == 0xFB) {
         cpu->flags = (uint16_t)(cpu->flags | A5VM_FLAG_IF);
+        return cpu->status;
+    }
+    if (opcode == 0xE4 || opcode == 0xE5 || opcode == 0xE6 || opcode == 0xE7 ||
+        opcode == 0xEC || opcode == 0xED || opcode == 0xEE || opcode == 0xEF) {
+        uint16_t port = (opcode >= 0xEC) ? cpu->regs[A5VM_REG_DX] : fetch8(cpu);
+        uint8_t low;
+        uint8_t high;
+        if ((opcode == 0xE4 || opcode == 0xE5 || opcode == 0xEC || opcode == 0xED) &&
+            !cpu->io_read8) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "IN from port 0x%04X has no device", port);
+            return cpu->status;
+        }
+        if ((opcode == 0xE6 || opcode == 0xE7 || opcode == 0xEE || opcode == 0xEF) &&
+            !cpu->io_write8) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "OUT to port 0x%04X has no device", port);
+            return cpu->status;
+        }
+        if (opcode == 0xE4 || opcode == 0xEC) {
+            cpu->regs[A5VM_REG_AX] = (uint16_t)((cpu->regs[A5VM_REG_AX] & 0xFF00u) |
+                                                cpu->io_read8(cpu, port, cpu->io_context));
+        } else if (opcode == 0xE5 || opcode == 0xED) {
+            low = cpu->io_read8(cpu, port, cpu->io_context);
+            high = cpu->io_read8(cpu, port, cpu->io_context);
+            cpu->regs[A5VM_REG_AX] = (uint16_t)(low | ((uint16_t)high << 8));
+        } else if (opcode == 0xE6 || opcode == 0xEE) {
+            cpu->io_write8(cpu, port, (uint8_t)cpu->regs[A5VM_REG_AX],
+                           cpu->io_context);
+        } else {
+            cpu->io_write8(cpu, port, (uint8_t)cpu->regs[A5VM_REG_AX],
+                           cpu->io_context);
+            cpu->io_write8(cpu, port, (uint8_t)(cpu->regs[A5VM_REG_AX] >> 8),
+                           cpu->io_context);
+        }
         return cpu->status;
     }
     if (opcode >= 0xB0 && opcode <= 0xB7) {
