@@ -79,7 +79,7 @@ jobs:
 
       - name: Build iOS 6 GUI app
         run: |
-          make -f Makefile.ios THEOS="$THEOS" clean package
+          make -f Makefile.ios THEOS="$THEOS" clean all
           app=$(find .theos -type d -name A5VM.app -print -quit)
           test -n "$app"
           mkdir -p build/ios6-gui
