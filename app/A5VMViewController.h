@@ -12,6 +12,7 @@
     UILabel *_statusLabel;
     UIButton *_runButton;
     UIButton *_resetButton;
+    UIButton *_powerButton;
     UIButton *_pauseButton;
     UIButton *_keyboardButton;
     UIButton *_menuButton;
@@ -20,11 +21,13 @@
     a5vm_machine *_runtime;
     BOOL _controlsVisible;
     BOOL _keyboardVisible;
+    BOOL _poweredOn;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine;
 - (void)runDemo:(id)sender;
 - (void)resetVM:(id)sender;
+- (void)powerVM:(id)sender;
 - (void)toggleControls:(id)sender;
 - (void)showKeyboard:(id)sender;
 - (void)pauseVM:(id)sender;

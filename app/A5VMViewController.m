@@ -46,6 +46,8 @@
     [super viewDidLoad];
 
     [self.navigationController setNavigationBarHidden:YES animated:NO];
+    [[UIApplication sharedApplication] setStatusBarHidden:YES
+                                             withAnimation:UIStatusBarAnimationNone];
 
     self.title = _machineName;
 
@@ -99,6 +101,12 @@
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_resetButton];
 
+    _powerButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
+    [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
+    [_powerButton addTarget:self action:@selector(powerVM:)
+           forControlEvents:UIControlEventTouchUpInside];
+    [_controlPanel addSubview:_powerButton];
+
     _pauseButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
     [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
     [_pauseButton addTarget:self action:@selector(pauseVM:)
@@ -106,7 +114,7 @@
     [_controlPanel addSubview:_pauseButton];
 
     _keyboardButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_keyboardButton setTitle:@"Keyboard" forState:UIControlStateNormal];
+    [_keyboardButton setTitle:@"Keys" forState:UIControlStateNormal];
     [_keyboardButton addTarget:self action:@selector(showKeyboard:)
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_keyboardButton];
@@ -123,6 +131,7 @@
 
     _controlsVisible = YES;
     _keyboardVisible = NO;
+    _poweredOn = YES;
     [self layoutOverlayControls];
     [self setControlsVisible:NO animated:NO];
 
@@ -143,9 +152,10 @@
                                     _controlPanel.bounds.size.width - 132.0f, 24.0f);
     _runButton.frame = CGRectMake(6.0f, 25.0f, 52.0f, 22.0f);
     _resetButton.frame = CGRectMake(62.0f, 25.0f, 58.0f, 22.0f);
-    _pauseButton.frame = CGRectMake(124.0f, 25.0f, 58.0f, 22.0f);
-    _keyboardButton.frame = CGRectMake(186.0f, 25.0f,
-                                       _controlPanel.bounds.size.width - 192.0f, 22.0f);
+    _powerButton.frame = CGRectMake(124.0f, 25.0f, 52.0f, 22.0f);
+    _pauseButton.frame = CGRectMake(180.0f, 25.0f, 52.0f, 22.0f);
+    _keyboardButton.frame = CGRectMake(236.0f, 25.0f,
+                                       _controlPanel.bounds.size.width - 242.0f, 22.0f);
     _inputField.frame = CGRectMake(8.0f, bounds.size.height - 42.0f,
                                    bounds.size.width - 16.0f, 34.0f);
 }
@@ -172,10 +182,28 @@
     (void)sender;
     _keyboardVisible = !_keyboardVisible;
     _inputField.hidden = !_keyboardVisible;
-    [_keyboardButton setTitle:_keyboardVisible ? @"Hide keyboard" : @"Keyboard"
+    [_keyboardButton setTitle:_keyboardVisible ? @"Hide" : @"Keys"
                       forState:UIControlStateNormal];
     if (_keyboardVisible) [_inputField becomeFirstResponder];
     else [_inputField resignFirstResponder];
+}
+
+- (void)powerVM:(id)sender {
+    (void)sender;
+    if (_poweredOn) {
+        if (_runtime) a5vm_machine_reset(_runtime);
+        _poweredOn = NO;
+        _keyboardVisible = NO;
+        _inputField.hidden = YES;
+        [_inputField resignFirstResponder];
+        [_powerButton setTitle:@"On" forState:UIControlStateNormal];
+        _statusLabel.text = @"Off";
+        [self renderVGA];
+    } else {
+        _poweredOn = YES;
+        [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
+        [self resetVM:nil];
+    }
 }
 
 - (void)pauseVM:(id)sender {
@@ -238,7 +266,7 @@
     (void)sender;
     a5vm_cpu_status status;
     BOOL is386;
-    if (!_runtime) return;
+    if (!_runtime || !_poweredOn) return;
     is386 = [[[_machine objectForKey:@"architecture"]
               lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
     status = is386 ? a5vm_machine_boot386(_runtime, 1000) :
@@ -275,6 +303,8 @@
 - (void)resetVM:(id)sender {
     (void)sender;
     if (!_runtime) return;
+    _poweredOn = YES;
+    [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
     a5vm_machine_reset(_runtime);
     BOOL is386 = [[[_machine objectForKey:@"architecture"]
                    lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
@@ -329,6 +359,7 @@
     [_statusLabel release];
     [_runButton release];
     [_resetButton release];
+    [_powerButton release];
     [_pauseButton release];
     [_keyboardButton release];
     [_menuButton release];
@@ -343,6 +374,8 @@
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    [[UIApplication sharedApplication] setStatusBarHidden:NO
+                                             withAnimation:UIStatusBarAnimationNone];
     [self.navigationController setNavigationBarHidden:NO animated:animated];
 }
 
