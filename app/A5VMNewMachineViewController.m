@@ -4,6 +4,7 @@ static NSInteger const A5VMFamilyActionSheetTag = 1001;
 static NSInteger const A5VMVersionActionSheetTag = 1002;
 static NSInteger const A5VMCreateAlertTag = 1003;
 static NSInteger const A5VMMediaAlertTag = 1004;
+static NSInteger const A5VMMediaActionSheetTag = 1005;
 
 @implementation A5VMNewMachineViewController
 
@@ -101,6 +102,39 @@ static NSInteger const A5VMMediaAlertTag = 1004;
 
 - (void)chooseMedia:(id)sender {
     (void)sender;
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *documents = [directories objectAtIndex:0];
+    NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:documents
+                                                                            error:nil];
+    NSMutableArray *choices = [NSMutableArray array];
+    for (NSString *name in names) {
+        BOOL isDirectory = NO;
+        NSString *path = [documents stringByAppendingPathComponent:name];
+        NSString *extension = [[name pathExtension] lowercaseString];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] ||
+            isDirectory || ![extension length]) continue;
+        if ([extension isEqualToString:@"img"] || [extension isEqualToString:@"ima"] ||
+            [extension isEqualToString:@"dsk"] || [extension isEqualToString:@"iso"] ||
+            [extension isEqualToString:@"rom"]) {
+            [choices addObject:name];
+        }
+    }
+    [choices sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+    [_mediaChoices release];
+    _mediaChoices = [choices copy];
+
+    UIActionSheet *sheet = [[[UIActionSheet alloc] initWithTitle:@"Installation Media"
+                                                          delegate:self
+                                                 cancelButtonTitle:@"Cancel"
+                                            destructiveButtonTitle:nil
+                                                 otherButtonTitles:@"Enter path", nil] autorelease];
+    for (NSString *name in _mediaChoices) [sheet addButtonWithTitle:name];
+    sheet.tag = A5VMMediaActionSheetTag;
+    [sheet showInView:self.view];
+}
+
+- (void)enterMediaPath {
     UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Installation media path"
                                                      message:@"Enter a full path to an IMG, ISO, ROM, or disk image. The file will be copied into A5VM Documents."
                                                     delegate:self
@@ -197,8 +231,8 @@ static NSInteger const A5VMMediaAlertTag = 1004;
             cell.accessoryType = UITableViewCellAccessoryNone;
         } else {
             cell.textLabel.text = @"Source file";
-            cell.detailTextLabel.text = [_profile objectForKey:@"mediaPath"];
-            if ([[cell.detailTextLabel text] length] == 0) cell.detailTextLabel.text = @"Not selected";
+            NSString *path = [_profile objectForKey:@"mediaPath"];
+            cell.detailTextLabel.text = [path length] == 0 ? @"Not selected" : [path lastPathComponent];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         }
     } else if (indexPath.section == 2) {
@@ -228,10 +262,26 @@ static NSInteger const A5VMMediaAlertTag = 1004;
         _osFamily = [[actionSheet buttonTitleAtIndex:buttonIndex] copy];
         [_osVersion release];
         _osVersion = nil;
+        [_mediaPath release];
+        _mediaPath = nil;
         [self rebuildProfile];
     } else if (actionSheet.tag == A5VMVersionActionSheetTag) {
         [_osVersion release];
         _osVersion = [[actionSheet buttonTitleAtIndex:buttonIndex] copy];
+        [self rebuildProfile];
+    } else if (actionSheet.tag == A5VMMediaActionSheetTag) {
+        if (buttonIndex == 0) {
+            [self enterMediaPath];
+            return;
+        }
+        NSUInteger choiceIndex = (NSUInteger)buttonIndex - 1u;
+        if (choiceIndex >= [_mediaChoices count]) return;
+        NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                    NSUserDomainMask, YES);
+        NSString *path = [[directories objectAtIndex:0]
+                          stringByAppendingPathComponent:[_mediaChoices objectAtIndex:choiceIndex]];
+        [_mediaPath release];
+        _mediaPath = [path copy];
         [self rebuildProfile];
     }
 }
@@ -274,6 +324,7 @@ static NSInteger const A5VMMediaAlertTag = 1004;
     [_osFamily release];
     [_osVersion release];
     [_mediaPath release];
+    [_mediaChoices release];
     [_profile release];
     [super dealloc];
 }

@@ -51,7 +51,9 @@
                                        reuseIdentifier:CellIdentifier] autorelease];
         cell.textLabel.textColor = [UIColor darkTextColor];
     }
+    cell.textLabel.textColor = [UIColor darkTextColor];
     cell.detailTextLabel.textColor = [UIColor grayColor];
+    cell.accessoryType = UITableViewCellAccessoryNone;
 
     NSString *key = nil;
     NSString *label = nil;
@@ -64,9 +66,10 @@
             label = @"Installation media";
         }
         cell.textLabel.text = label;
-        cell.detailTextLabel.text = [_machine objectForKey:key];
+        NSString *mediaPath = [_machine objectForKey:key];
+        cell.detailTextLabel.text = [mediaPath length] == 0
+            ? @"Not selected" : [mediaPath lastPathComponent];
         if ([[cell.detailTextLabel text] length] == 0) cell.detailTextLabel.text = @"Not selected";
-        cell.accessoryType = UITableViewCellAccessoryNone;
         if (indexPath.row == 0 && [[_machine objectForKey:key] isEqualToString:@"Ready for floppy boot"]) {
             cell.detailTextLabel.textColor = [UIColor colorWithRed:0.10f green:0.55f blue:0.15f alpha:1.0f];
         } else if (indexPath.row == 0) {
@@ -98,9 +101,27 @@
         label = @"Installation media";
     }
     cell.textLabel.text = label;
-    cell.detailTextLabel.text = [_machine objectForKey:key];
-    cell.accessoryType = (indexPath.section == 0 && indexPath.row == 0)
-        ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
+    if (indexPath.section == 0 && indexPath.row == 1) {
+        NSString *family = [_machine objectForKey:@"osFamily"];
+        NSString *version = [_machine objectForKey:@"osVersion"];
+        if ([family length] == 0) family = @"Unknown family";
+        if ([version length] == 0) version = @"Unknown version";
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ / %@", family, version];
+    } else if (indexPath.section == 1 && indexPath.row == 3) {
+        NSString *mediaPath = [_machine objectForKey:key];
+        cell.detailTextLabel.text = [mediaPath length] == 0
+            ? @"Not selected" : [mediaPath lastPathComponent];
+    } else {
+        cell.detailTextLabel.text = [_machine objectForKey:key];
+    }
+    if (indexPath.section == 0 && indexPath.row == 0) {
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    } else if (indexPath.section == 1 && indexPath.row == 2) {
+        NSString *storage = [[_machine objectForKey:@"storage"] lowercaseString];
+        if ([storage rangeOfString:@"floppy"].location != NSNotFound) {
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        }
+    }
     return cell;
 }
 
@@ -116,6 +137,16 @@
         [alert textFieldAtIndex:0].text = [_machine objectForKey:@"name"];
         [alert show];
     } else if (indexPath.section == 1 && indexPath.row == 2) {
+        NSString *storage = [[_machine objectForKey:@"storage"] lowercaseString];
+        if ([storage rangeOfString:@"floppy"].location == NSNotFound) {
+            UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"IDE storage"
+                                                             message:@"This preset uses an IDE disk. Its storage controller is not available in the iOS 6 runner yet."
+                                                            delegate:nil
+                                                   cancelButtonTitle:@"OK"
+                                                   otherButtonTitles:nil] autorelease];
+            [alert show];
+            return;
+        }
         NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
                                                                     NSUserDomainMask, YES);
         NSString *filename = [_machine objectForKey:@"diskImage"];

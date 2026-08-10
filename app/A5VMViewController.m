@@ -50,10 +50,12 @@
     CGRect bounds = self.view.bounds;
     _screenTitle = [[UILabel alloc] initWithFrame:CGRectMake(8.0f, 5.0f,
                                                                bounds.size.width - 180.0f, 30.0f)];
-    _screenTitle.text = @"A5VM  /  8086 PC";
     _screenTitle.textColor = [UIColor whiteColor];
     _screenTitle.backgroundColor = [UIColor clearColor];
     _screenTitle.font = [UIFont boldSystemFontOfSize:20.0f];
+    NSString *architecture = [_machine objectForKey:@"architecture"];
+    if ([architecture length] == 0) architecture = @"8086 PC";
+    _screenTitle.text = [NSString stringWithFormat:@"A5VM  /  %@", architecture];
     [self.view addSubview:_screenTitle];
 
     _statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(bounds.size.width - 168.0f, 8.0f,
@@ -161,7 +163,6 @@
     a5vm_cpu_status status;
     if (!_runtime) return;
     status = a5vm_machine_boot(_runtime, 1000);
-    a5vm_vga_text_clear(&_runtime->vga);
     [self writeLine:@"A5VM BIOS 0.1"];
     [self writeLine:[NSString stringWithFormat:@"%@ / %@ / %@",
                      [_machine objectForKey:@"architecture"],
@@ -217,6 +218,16 @@
            interfaceOrientation == UIInterfaceOrientationPortraitUpsideDown ||
            interfaceOrientation == UIInterfaceOrientationLandscapeLeft ||
            interfaceOrientation == UIInterfaceOrientationLandscapeRight;
+}
+
+- (BOOL)shouldAutorotate {
+    return YES;
+}
+
+- (NSUInteger)supportedInterfaceOrientations {
+    return UIInterfaceOrientationMaskPortrait |
+           UIInterfaceOrientationMaskLandscapeLeft |
+           UIInterfaceOrientationMaskLandscapeRight;
 }
 
 - (void)dealloc {

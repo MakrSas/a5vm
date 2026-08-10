@@ -12,12 +12,14 @@
     NSString *_osFamily;
     NSString *_osVersion;
     NSString *_mediaPath;
+    NSArray *_mediaChoices;
     NSDictionary *_profile;
 }
 
 - (id)initWithDelegate:(id <A5VMNewMachineDelegate>)delegate;
 - (void)chooseFamily:(id)sender;
 - (void)chooseVersion:(id)sender;
+- (void)chooseMedia:(id)sender;
 - (void)createMachine:(id)sender;
 
 @end

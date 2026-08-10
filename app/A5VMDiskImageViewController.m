@@ -6,6 +6,7 @@
 
 static NSInteger const A5VMResetDiskAlertTag = 2101;
 static NSInteger const A5VMImportDiskAlertTag = 2102;
+static NSInteger const A5VMImportActionSheetTag = 2103;
 
 - (id)initWithDiskPath:(NSString *)path {
     self = [super initWithStyle:UITableViewStyleGrouped];
@@ -57,6 +58,9 @@ static NSInteger const A5VMImportDiskAlertTag = 2102;
         cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1
                                        reuseIdentifier:CellIdentifier] autorelease];
     }
+    cell.textLabel.textColor = [UIColor darkTextColor];
+    cell.detailTextLabel.textColor = [UIColor grayColor];
+    cell.accessoryType = UITableViewCellAccessoryNone;
 
     if (indexPath.section == 1) {
         cell.textLabel.text = indexPath.row == 0 ? @"Reset demo boot disk" : @"Import image from path";
@@ -64,7 +68,8 @@ static NSInteger const A5VMImportDiskAlertTag = 2102;
         cell.textLabel.textColor = indexPath.row == 0
             ? [UIColor colorWithRed:0.80f green:0.10f blue:0.10f alpha:1.0f]
             : [UIColor colorWithRed:0.10f green:0.35f blue:0.75f alpha:1.0f];
-        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.accessoryType = indexPath.row == 1
+            ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
         return cell;
     }
 
@@ -113,8 +118,39 @@ static NSInteger const A5VMImportDiskAlertTag = 2102;
 
 - (void)importImage:(id)sender {
     (void)sender;
-    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Import disk image"
-                                                     message:@"Enter the full path of an IMG, DSK, or ISO file."
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *documents = [directories objectAtIndex:0];
+    NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:documents
+                                                                            error:nil];
+    NSMutableArray *choices = [NSMutableArray array];
+    for (NSString *name in names) {
+        BOOL isDirectory = NO;
+        NSString *path = [documents stringByAppendingPathComponent:name];
+        NSString *extension = [[name pathExtension] lowercaseString];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] ||
+            isDirectory) continue;
+        if ([extension isEqualToString:@"img"] || [extension isEqualToString:@"ima"] ||
+            [extension isEqualToString:@"dsk"]) {
+            [choices addObject:name];
+        }
+    }
+    [choices sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+    [_imageChoices release];
+    _imageChoices = [choices copy];
+    UIActionSheet *sheet = [[[UIActionSheet alloc] initWithTitle:@"Import floppy image"
+                                                          delegate:self
+                                                 cancelButtonTitle:@"Cancel"
+                                            destructiveButtonTitle:nil
+                                                 otherButtonTitles:@"Enter path", nil] autorelease];
+    for (NSString *name in _imageChoices) [sheet addButtonWithTitle:name];
+    sheet.tag = A5VMImportActionSheetTag;
+    [sheet showInView:self.view];
+}
+
+- (void)enterImportPath {
+    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Import floppy image"
+                                                     message:@"Enter the full path of an IMG, IMA, or DSK file."
                                                     delegate:self
                                            cancelButtonTitle:@"Cancel"
                                            otherButtonTitles:@"Import", nil] autorelease];
@@ -125,34 +161,54 @@ static NSInteger const A5VMImportDiskAlertTag = 2102;
     [alert show];
 }
 
+- (void)importImageAtPath:(NSString *)source {
+    NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:source error:nil];
+    NSNumber *fileSize = [attributes objectForKey:NSFileSize];
+    if ([fileSize unsignedLongLongValue] == 0 ||
+        [fileSize unsignedLongLongValue] > A5VM_FLOPPY_IMAGE_SIZE) {
+        UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
+                                                           message:@"The file was not found or is larger than a floppy image."
+                                                          delegate:nil
+                                                 cancelButtonTitle:@"OK"
+                                                 otherButtonTitles:nil] autorelease];
+        [error show];
+        return;
+    }
+    NSData *image = [NSData dataWithContentsOfFile:source];
+    if (!image || ![image writeToFile:_diskPath atomically:YES]) {
+        UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
+                                                           message:@"A5VM could not read the selected file."
+                                                          delegate:nil
+                                                 cancelButtonTitle:@"OK"
+                                                 otherButtonTitles:nil] autorelease];
+        [error show];
+        return;
+    }
+    [self reloadDiskMetadata];
+}
+
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (buttonIndex == actionSheet.cancelButtonIndex) return;
+    if (actionSheet.tag != A5VMImportActionSheetTag) return;
+    if (buttonIndex == 0) {
+        [self enterImportPath];
+        return;
+    }
+    NSUInteger choiceIndex = (NSUInteger)buttonIndex - 1u;
+    if (choiceIndex >= [_imageChoices count]) return;
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *source = [[directories objectAtIndex:0]
+                        stringByAppendingPathComponent:[_imageChoices objectAtIndex:choiceIndex]];
+    [self importImageAtPath:source];
+}
+
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
     if (buttonIndex == alertView.cancelButtonIndex) return;
     if (alertView.tag == A5VMImportDiskAlertTag) {
         NSString *source = [[alertView textFieldAtIndex:0].text
                             stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        NSDictionary *attributes = [[NSFileManager defaultManager] attributesOfItemAtPath:source error:nil];
-        NSNumber *fileSize = [attributes objectForKey:NSFileSize];
-        if ([fileSize unsignedLongLongValue] == 0 ||
-            [fileSize unsignedLongLongValue] > A5VM_FLOPPY_IMAGE_SIZE) {
-            UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
-                                                               message:@"The file was not found or is larger than a floppy image."
-                                                              delegate:nil
-                                                     cancelButtonTitle:@"OK"
-                                                     otherButtonTitles:nil] autorelease];
-            [error show];
-            return;
-        }
-        NSData *image = [NSData dataWithContentsOfFile:source];
-        if (!image || ![image writeToFile:_diskPath atomically:YES]) {
-            UIAlertView *error = [[[UIAlertView alloc] initWithTitle:@"Import failed"
-                                                               message:@"A5VM could not read the selected file."
-                                                              delegate:nil
-                                                     cancelButtonTitle:@"OK"
-                                                     otherButtonTitles:nil] autorelease];
-            [error show];
-            return;
-        }
-        [self reloadDiskMetadata];
+        [self importImageAtPath:source];
         return;
     }
     a5vm_floppy floppy;
@@ -166,6 +222,7 @@ static NSInteger const A5VMImportDiskAlertTag = 2102;
 
 - (void)dealloc {
     [_diskPath release];
+    [_imageChoices release];
     [super dealloc];
 }
 

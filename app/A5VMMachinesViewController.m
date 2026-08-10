@@ -44,6 +44,7 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
     NSUInteger index;
     for (index = 0; index < [self.machines count]; ++index) {
         NSDictionary *source = [self.machines objectAtIndex:index];
+        if (![source isKindOfClass:[NSDictionary class]]) source = [self defaultMachine];
         NSMutableDictionary *machine = [NSMutableDictionary dictionaryWithDictionary:source];
         if ([[machine objectForKey:@"storage"] length] == 0) {
             [machine setObject:@"1.44 MB floppy" forKey:@"storage"];
@@ -116,14 +117,39 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
     }
 
     NSDictionary *machine = [self.machines objectAtIndex:indexPath.row];
-    cell.textLabel.text = [machine objectForKey:@"name"];
+    NSString *name = [machine objectForKey:@"name"];
+    if ([name length] == 0) name = @"Unnamed machine";
+    cell.textLabel.text = name;
+    NSString *family = [machine objectForKey:@"osFamily"];
     NSString *os = [machine objectForKey:@"osVersion"];
     if ([os length] == 0) os = [machine objectForKey:@"architecture"];
+    if ([family length] == 0) family = @"Virtual machine";
+    if ([os length] == 0) os = @"Unknown system";
+    NSString *ram = [machine objectForKey:@"ram"];
+    if ([ram length] == 0) ram = @"Memory unavailable";
+    NSString *display = [machine objectForKey:@"display"];
+    if ([display length] == 0) display = @"Display unavailable";
     cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  -  %@  -  %@",
-                                 os,
-                                 [machine objectForKey:@"ram"],
-                                 [machine objectForKey:@"display"]];
+                                 [NSString stringWithFormat:@"%@ / %@", family, os],
+                                 ram,
+                                 display];
     return cell;
+}
+
+- (NSString *)uniqueDocumentFilenameWithPrefix:(NSString *)prefix suffix:(NSString *)suffix {
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *documents = [directories objectAtIndex:0];
+    NSUInteger number = 1;
+    while (YES) {
+        NSString *filename = [NSString stringWithFormat:@"%@%lu%@",
+                              prefix, (unsigned long)number, suffix];
+        if (![[NSFileManager defaultManager]
+             fileExistsAtPath:[documents stringByAppendingPathComponent:filename]]) {
+            return filename;
+        }
+        ++number;
+    }
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -150,17 +176,15 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
              didCreateMachine:(NSDictionary *)machine {
     (void)controller;
     NSMutableDictionary *created = [NSMutableDictionary dictionaryWithDictionary:machine];
-    NSUInteger number = [self.machines count] + 1ul;
-    NSString *diskImage = [NSString stringWithFormat:@"machine-%lu.dsk",
-                           (unsigned long)number];
+    NSString *diskImage = [self uniqueDocumentFilenameWithPrefix:@"machine-" suffix:@".dsk"];
     NSString *sourcePath = [created objectForKey:@"mediaPath"];
     NSString *extension = [[sourcePath pathExtension] lowercaseString];
     if ([sourcePath length] != 0) {
         NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
                                                                     NSUserDomainMask, YES);
-        NSString *filename = [NSString stringWithFormat:@"machine-%lu-media.%@",
-                              (unsigned long)number,
-                              [extension length] == 0 ? @"img" : extension];
+        NSString *filename = [self uniqueDocumentFilenameWithPrefix:@"machine-"
+                                                                suffix:[NSString stringWithFormat:@"-media.%@",
+                                                                        [extension length] == 0 ? @"img" : extension]];
         NSString *destination = [[directories objectAtIndex:0]
                                  stringByAppendingPathComponent:filename];
         NSError *error = nil;
