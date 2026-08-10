@@ -9,8 +9,8 @@ int main(void) {
         0x01, 0xD8,             /* add ax, bx */
         0xF4                    /* hlt */
     };
-    a5vm_memory memory;
-    a5vm_cpu8086 cpu;
+    static a5vm_memory memory;
+    static a5vm_cpu8086 cpu;
 
     a5vm_memory_init(&memory);
     a5vm_memory_load(&memory, 0x1000, program, sizeof(program));
