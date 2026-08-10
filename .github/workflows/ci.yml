@@ -77,6 +77,7 @@ jobs:
           SDK="$THEOS/sdks/iPhoneOS9.3.sdk"
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
             -miphoneos-version-min=6.0 -fno-stack-protector -ffreestanding \
+            -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0 \
             -Iinclude -c src/memory.c src/cpu8086.c src/freestanding.c \
             src/ios_main.c src/ios_start.c
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
