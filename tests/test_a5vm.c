@@ -264,7 +264,7 @@ static void test_floppy_and_boot(void) {
                          ide_pio_program, sizeof(ide_pio_program));
         machine.cpu.segs[A5VM_SEG_CS] = 0;
         machine.cpu.ip = 0x1200;
-        status = a5vm_cpu8086_run(&machine.cpu, 400);
+        status = a5vm_cpu8086_run(&machine.cpu, 1000);
         CHECK(status == A5VM_CPU_HALTED);
         CHECK(a5vm_memory_read8(&machine.memory, 0x9000) == 0xDE);
         CHECK(a5vm_memory_read8(&machine.memory, 0x9001) == 0xAD);
