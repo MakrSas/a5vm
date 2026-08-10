@@ -4,6 +4,8 @@
 #include "a5vm/floppy.h"
 #include "a5vm/keyboard.h"
 #include "a5vm/machine.h"
+#include "a5vm/pic8259.h"
+#include "a5vm/pit8253.h"
 #include "a5vm/vga_text.h"
 
 static int failures;
@@ -106,6 +108,27 @@ static void test_keyboard(void) {
     CHECK(!a5vm_keyboard_push(&keyboard, 0xFF));
 }
 
+static void test_pic_and_pit(void) {
+    a5vm_pic8259 pic;
+    a5vm_pit8253 pit;
+    uint8_t vector = 0;
+
+    a5vm_pic8259_init(&pic, 0x08);
+    a5vm_pic8259_raise(&pic, 0);
+    CHECK(!a5vm_pic8259_has_pending(&pic));
+    a5vm_pic8259_set_mask(&pic, 0, 1);
+    CHECK(a5vm_pic8259_has_pending(&pic));
+    CHECK(a5vm_pic8259_acknowledge(&pic, &vector) && vector == 0x08);
+    CHECK(!a5vm_pic8259_has_pending(&pic));
+    CHECK(!a5vm_pic8259_acknowledge(&pic, &vector));
+
+    a5vm_pit8253_init(&pit, 3);
+    CHECK(a5vm_pit8253_tick(&pit, 2) == 0);
+    CHECK(a5vm_pit8253_tick(&pit, 1) == 1);
+    CHECK(a5vm_pit8253_tick(&pit, 7) == 2);
+    CHECK(pit.ticks == 3);
+}
+
 static void test_floppy_and_boot(void) {
     a5vm_floppy floppy;
     a5vm_machine machine;
@@ -130,6 +153,11 @@ static void test_floppy_and_boot(void) {
     CHECK(machine.vga.cells[2] == '5');
     CHECK(machine.vga.cells[4] == 'V');
     CHECK(machine.vga.cells[6] == 'M');
+    a5vm_pic8259_set_mask(&machine.pic, 0, 1);
+    a5vm_machine_tick(&machine, 65536);
+    CHECK(machine.pit.ticks == 1);
+    CHECK(a5vm_pic8259_has_pending(&machine.pic));
+    CHECK(a5vm_pic8259_acknowledge(&machine.pic, &sector[0]) && sector[0] == 0x08);
 
     {
         static const uint8_t disk_read_program[] = {
@@ -160,6 +188,7 @@ int main(void) {
     test_stack();
     test_vga_text();
     test_keyboard();
+    test_pic_and_pit();
     test_floppy_and_boot();
     if (failures != 0) {
         fprintf(stderr, "%d test(s) failed\n", failures);

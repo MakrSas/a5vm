@@ -22,6 +22,26 @@ void a5vm_machine_reset(a5vm_machine *machine) {
                                        a5vm_bios_handle_interrupt, machine);
     a5vm_keyboard_init(&machine->keyboard);
     a5vm_vga_text_init(&machine->vga);
+    a5vm_pic8259_init(&machine->pic, 0x08);
+    a5vm_pit8253_init(&machine->pit, 65536);
+}
+
+void a5vm_machine_tick(a5vm_machine *machine, uint32_t cycles) {
+    uint32_t pulses = a5vm_pit8253_tick(&machine->pit, cycles);
+    while (pulses-- != 0) {
+        a5vm_pic8259_raise(&machine->pic, 0);
+    }
+}
+
+a5vm_cpu_status a5vm_machine_run(a5vm_machine *machine,
+                                  uint64_t max_steps) {
+    uint64_t steps = 0;
+    while (machine->cpu.status == A5VM_CPU_RUNNING && steps < max_steps) {
+        a5vm_cpu8086_step(&machine->cpu);
+        a5vm_machine_tick(machine, 1);
+        steps++;
+    }
+    return machine->cpu.status;
 }
 
 a5vm_cpu_status a5vm_machine_boot(a5vm_machine *machine,
@@ -40,5 +60,5 @@ a5vm_cpu_status a5vm_machine_boot(a5vm_machine *machine,
     machine->cpu.segs[A5VM_SEG_SS] = 0;
     machine->cpu.ip = A5VM_BOOT_ADDRESS;
     machine->cpu.regs[A5VM_REG_SP] = 0xFFFE;
-    return a5vm_cpu8086_run(&machine->cpu, max_steps);
+    return a5vm_machine_run(machine, max_steps);
 }

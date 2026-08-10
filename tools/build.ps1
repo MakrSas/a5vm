@@ -19,6 +19,7 @@ $common = @('-std=c11', '-Wall', '-Wextra', '-Werror', '-I', (Join-Path $root 'i
 $sources = @((Join-Path $root 'src\memory.c'), (Join-Path $root 'src\cpu8086.c'),
     (Join-Path $root 'src\vga_text.c'), (Join-Path $root 'src\keyboard.c'),
     (Join-Path $root 'src\floppy.c'), (Join-Path $root 'src\bios.c'),
+    (Join-Path $root 'src\pic8259.c'), (Join-Path $root 'src\pit8253.c'),
     (Join-Path $root 'src\machine.c'))
 
 & $compiler @common @sources (Join-Path $root 'src\main.c') '-o' (Join-Path $build 'a5vm-demo.exe')
