@@ -175,9 +175,10 @@
 
 - (void)runMachine:(id)sender {
     (void)sender;
-    if (![[_machine objectForKey:@"capability"] isEqualToString:@"Ready for floppy boot"]) {
+    NSString *capability = [_machine objectForKey:@"capability"];
+    if ([capability rangeOfString:@"floppy boot"].location == NSNotFound) {
         UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Preset not available yet"
-                                                         message:[_machine objectForKey:@"capability"]
+                                                         message:capability
                                                         delegate:nil
                                                cancelButtonTitle:@"OK"
                                                otherButtonTitles:nil] autorelease];

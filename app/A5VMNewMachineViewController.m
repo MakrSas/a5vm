@@ -62,14 +62,14 @@ static NSInteger const A5VMMediaActionSheetTag = 1005;
         mediaType = @"IMG";
         capability = @"Ready for floppy boot";
     } else if ([_osFamily isEqualToString:@"Windows"]) {
-        architecture = @"i386 (planned)";
+        architecture = @"i386 (experimental)";
         ram = [_osVersion isEqualToString:@"Windows 3.1"] ? @"16 MB" :
               ([_osVersion isEqualToString:@"Windows 95"] ? @"32 MB" : @"64 MB");
         display = @"VGA";
-        storage = @"IDE disk + installation media";
+        storage = @"IDE disk + floppy/ISO media";
         machineProfile = @"i386-pc";
         mediaType = @"ISO / IMG";
-        capability = @"Requires protected-mode core";
+        capability = @"Experimental i386 floppy boot";
     } else {
         architecture = [_osVersion isEqualToString:@"System 7"]
             ? @"68k Macintosh (planned)" : @"PowerPC Macintosh (planned)";

@@ -317,6 +317,22 @@ static void test_floppy_and_boot(void) {
         CHECK(a5vm_disk_read_sector(&machine.disk, 1, written));
         CHECK(written[0] == 0xDE && written[1] == 0xAD);
     }
+
+    {
+        uint8_t i386_boot[A5VM_FLOPPY_SECTOR_SIZE] = { 0 };
+        i386_boot[0] = 0xB4; /* mov ah, 0Eh */
+        i386_boot[1] = 0x0E;
+        i386_boot[2] = 0xB0; /* mov al, '3' */
+        i386_boot[3] = '3';
+        i386_boot[4] = 0xCD; /* int 10h */
+        i386_boot[5] = 0x10;
+        i386_boot[6] = 0xF4;
+        CHECK(a5vm_floppy_write_sector(&machine.floppy, 0, i386_boot));
+        status = a5vm_machine_boot386(&machine, 20);
+        CHECK(status == A5VM_CPU_HALTED);
+        CHECK(machine.cpu386.regs[A5VM_CPU386_REG_EAX] == 0x0E33u);
+        CHECK(machine.vga.cells[0] == '3');
+    }
     a5vm_machine_deinit(&machine);
 }
 

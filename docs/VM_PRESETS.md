@@ -118,6 +118,8 @@ setup sequence through `LGDT`, `CR0.PE`, and a protected-mode far jump, plus a
 small 32-bit instruction subset. IDE PIO and the virtual hard disk are already
 available to the 8086 machine.
 
-The Windows presets remain marked as unavailable until the 386 backend is
-connected to the machine's BIOS, interrupt, and media boot path. MacOS presets
-still require a separate Macintosh CPU/ROM backend.
+The 386 backend is now connected to the machine's floppy boot path, BIOS
+INT 10h/13h/16h handlers, and the IDE I/O callbacks. It is still an initial
+instruction subset, so Windows 95/98 presets remain experimental until a real
+installer boot sector passes a smoke test. MacOS presets still require a
+separate Macintosh CPU/ROM backend.

@@ -188,6 +188,22 @@ void a5vm_cpu386_init(a5vm_cpu386 *cpu, a5vm_memory *memory) {
     a5vm_cpu386_reset(cpu);
 }
 
+void a5vm_cpu386_set_interrupt_handler(a5vm_cpu386 *cpu,
+                                        a5vm_cpu386_interrupt_handler handler,
+                                        void *context) {
+    cpu->interrupt_handler = handler;
+    cpu->interrupt_context = context;
+}
+
+void a5vm_cpu386_set_io_handlers(a5vm_cpu386 *cpu,
+                                 a5vm_cpu386_io_read8_handler read8,
+                                 a5vm_cpu386_io_write8_handler write8,
+                                 void *context) {
+    cpu->io_read8 = read8;
+    cpu->io_write8 = write8;
+    cpu->io_context = context;
+}
+
 void a5vm_cpu386_reset(a5vm_cpu386 *cpu) {
     memset(cpu->regs, 0, sizeof(cpu->regs));
     memset(cpu->segs, 0, sizeof(cpu->segs));
@@ -240,6 +256,57 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
         cpu->eflags |= A5VM_FLAG_IF;
         return cpu->status;
     }
+    if (opcode >= 0xB0 && opcode <= 0xB7) {
+        unsigned reg = opcode - 0xB0u;
+        uint8_t value = fetch8(cpu);
+        if (reg < 4) cpu->regs[reg] = (cpu->regs[reg] & 0xFFFFFF00u) | value;
+        else {
+            reg -= 4;
+            cpu->regs[reg] = (cpu->regs[reg] & 0xFFFF00FFu) |
+                ((uint32_t)value << 8);
+        }
+        return cpu->status;
+    }
+    if (opcode == 0xE4 || opcode == 0xE5 || opcode == 0xE6 || opcode == 0xE7 ||
+        opcode == 0xEC || opcode == 0xED || opcode == 0xEE || opcode == 0xEF) {
+        uint16_t port = (opcode >= 0xEC) ? (uint16_t)cpu->regs[A5VM_CPU386_REG_EDX]
+                                         : fetch8(cpu);
+        uint8_t low;
+        uint8_t high;
+        if ((opcode == 0xE4 || opcode == 0xE5 || opcode == 0xEC || opcode == 0xED) &&
+            !cpu->io_read8) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED,
+                   "IN from port 0x%04X has no device", port);
+            return cpu->status;
+        }
+        if ((opcode == 0xE6 || opcode == 0xE7 || opcode == 0xEE || opcode == 0xEF) &&
+            !cpu->io_write8) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED,
+                   "OUT to port 0x%04X has no device", port);
+            return cpu->status;
+        }
+        if (opcode == 0xE4 || opcode == 0xEC) {
+            cpu->regs[A5VM_CPU386_REG_EAX] =
+                (cpu->regs[A5VM_CPU386_REG_EAX] & 0xFFFFFF00u) |
+                cpu->io_read8(cpu, port, cpu->io_context);
+        } else if (opcode == 0xE5 || opcode == 0xED) {
+            low = cpu->io_read8(cpu, port, cpu->io_context);
+            high = cpu->io_read8(cpu, port, cpu->io_context);
+            cpu->regs[A5VM_CPU386_REG_EAX] = low | ((uint32_t)high << 8);
+        } else if (opcode == 0xE6 || opcode == 0xEE) {
+            cpu->io_write8(cpu, port,
+                           (uint8_t)cpu->regs[A5VM_CPU386_REG_EAX],
+                           cpu->io_context);
+        } else {
+            cpu->io_write8(cpu, port,
+                           (uint8_t)cpu->regs[A5VM_CPU386_REG_EAX],
+                           cpu->io_context);
+            cpu->io_write8(cpu, port,
+                           (uint8_t)(cpu->regs[A5VM_CPU386_REG_EAX] >> 8),
+                           cpu->io_context);
+        }
+        return cpu->status;
+    }
     if (opcode >= 0xB8 && opcode <= 0xBF) {
         unsigned reg = opcode - 0xB8u;
         if (operand32) cpu->regs[reg] = fetch32(cpu);
@@ -280,6 +347,16 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
             faultf(cpu, A5VM_CPU_FAULT, "invalid MOV segment selector");
             return cpu->status;
         }
+        return cpu->status;
+    }
+    if (opcode == 0xCD) {
+        uint8_t vector = fetch8(cpu);
+        if (cpu->interrupt_handler &&
+            cpu->interrupt_handler(cpu, vector, cpu->interrupt_context)) {
+            return cpu->status;
+        }
+        faultf(cpu, A5VM_CPU_UNIMPLEMENTED,
+               "interrupt 0x%02X has no BIOS device yet", vector);
         return cpu->status;
     }
     if (opcode == 0x75) {

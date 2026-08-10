@@ -133,8 +133,20 @@
     return [documents stringByAppendingPathComponent:filename];
 }
 
+- (NSString *)bootImagePath {
+    NSString *mediaPath = [_machine objectForKey:@"mediaPath"];
+    NSString *extension = [[mediaPath pathExtension] lowercaseString];
+    BOOL floppyImage = [extension isEqualToString:@"img"] ||
+        [extension isEqualToString:@"ima"] || [extension isEqualToString:@"dsk"];
+    if (!floppyImage || [mediaPath length] == 0) return [self diskImagePath];
+    if ([mediaPath hasPrefix:@"/"]) return mediaPath;
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    return [[directories objectAtIndex:0] stringByAppendingPathComponent:mediaPath];
+}
+
 - (void)loadDiskImage {
-    NSData *image = [NSData dataWithContentsOfFile:[self diskImagePath]];
+    NSData *image = [NSData dataWithContentsOfFile:[self bootImagePath]];
     if (image && [image length] <= _runtime->floppy.size) {
         memcpy(_runtime->floppy.bytes, [image bytes], [image length]);
     } else {
@@ -146,7 +158,7 @@
     if (!_runtime || !_runtime->floppy.bytes) return;
     NSData *image = [NSData dataWithBytes:_runtime->floppy.bytes
                                    length:_runtime->floppy.size];
-    [image writeToFile:[self diskImagePath] atomically:YES];
+    [image writeToFile:[self bootImagePath] atomically:YES];
 }
 
 - (void)renderVGA {
@@ -161,8 +173,12 @@
 - (void)runDemo:(id)sender {
     (void)sender;
     a5vm_cpu_status status;
+    BOOL is386;
     if (!_runtime) return;
-    status = a5vm_machine_boot(_runtime, 1000);
+    is386 = [[[_machine objectForKey:@"architecture"]
+              lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
+    status = is386 ? a5vm_machine_boot386(_runtime, 1000) :
+        a5vm_machine_boot(_runtime, 1000);
     [self writeLine:@"A5VM BIOS 0.1"];
     [self writeLine:[NSString stringWithFormat:@"%@ / %@ / %@",
                      [_machine objectForKey:@"architecture"],
@@ -172,13 +188,20 @@
     [self writeLine:@" "];
     [self writeLine:@"Booting sector 0 from virtual floppy..."];
     [self writeLine:status == A5VM_CPU_HALTED ? @"Boot sector halted." : @"Boot failed."];
-    [self writeLine:[NSString stringWithFormat:@"AX=%04X  BX=%04X  IP=%04X",
-                     _runtime->cpu.regs[A5VM_REG_AX],
-                     _runtime->cpu.regs[A5VM_REG_BX],
-                     _runtime->cpu.ip]];
+    if (is386) {
+        [self writeLine:[NSString stringWithFormat:@"EAX=%08X  EIP=%08X",
+                         _runtime->cpu386.regs[A5VM_CPU386_REG_EAX],
+                         _runtime->cpu386.eip]];
+    } else {
+        [self writeLine:[NSString stringWithFormat:@"AX=%04X  BX=%04X  IP=%04X",
+                         _runtime->cpu.regs[A5VM_REG_AX],
+                         _runtime->cpu.regs[A5VM_REG_BX],
+                         _runtime->cpu.ip]];
+    }
     if (status != A5VM_CPU_HALTED) {
-        [self writeLine:[NSString stringWithFormat:@"FAULT: %s",
-                         a5vm_cpu8086_fault(&_runtime->cpu)]];
+        const char *fault = is386 ? a5vm_cpu386_fault(&_runtime->cpu386) :
+            a5vm_cpu8086_fault(&_runtime->cpu);
+        [self writeLine:[NSString stringWithFormat:@"FAULT: %s", fault]];
     }
     a5vm_vga_text_write(&_runtime->vga, "A:\\>");
     [self renderVGA];
@@ -189,7 +212,10 @@
     (void)sender;
     if (!_runtime) return;
     a5vm_machine_reset(_runtime);
-    a5vm_vga_text_write(&_runtime->vga, "A5VM BIOS 0.1\n8086 PC READY\n\nA:\\>");
+    BOOL is386 = [[[_machine objectForKey:@"architecture"]
+                   lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
+    a5vm_vga_text_write(&_runtime->vga, is386 ? "A5VM BIOS 0.1\ni386 PC READY\n\nA:\\>" :
+                        "A5VM BIOS 0.1\n8086 PC READY\n\nA:\\>");
     [self renderVGA];
     _statusLabel.text = @"Ready";
 }

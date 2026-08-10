@@ -22,6 +22,7 @@ $sources = @((Join-Path $root 'src\memory.c'), (Join-Path $root 'src\cpu8086.c')
     (Join-Path $root 'src\floppy.c'), (Join-Path $root 'src\disk.c'),
     (Join-Path $root 'src\ide.c'),
     (Join-Path $root 'src\bios.c'),
+    (Join-Path $root 'src\bios386.c'),
     (Join-Path $root 'src\pic8259.c'), (Join-Path $root 'src\pit8253.c'),
     (Join-Path $root 'src\machine.c'))
 

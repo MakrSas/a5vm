@@ -21,7 +21,16 @@ enum {
 
 #define A5VM_CPU386_CR0_PE 0x00000001u
 
-typedef struct {
+typedef struct a5vm_cpu386 a5vm_cpu386;
+typedef int (*a5vm_cpu386_interrupt_handler)(a5vm_cpu386 *cpu,
+                                             uint8_t vector, void *context);
+typedef uint8_t (*a5vm_cpu386_io_read8_handler)(a5vm_cpu386 *cpu,
+                                                uint16_t port, void *context);
+typedef void (*a5vm_cpu386_io_write8_handler)(a5vm_cpu386 *cpu,
+                                              uint16_t port, uint8_t value,
+                                              void *context);
+
+struct a5vm_cpu386 {
     uint32_t regs[A5VM_CPU386_REG_COUNT];
     uint16_t segs[A5VM_CPU386_SEG_COUNT];
     uint32_t eip;
@@ -38,10 +47,22 @@ typedef struct {
     a5vm_cpu_status status;
     char fault[128];
     a5vm_memory *memory;
-} a5vm_cpu386;
+    a5vm_cpu386_interrupt_handler interrupt_handler;
+    void *interrupt_context;
+    a5vm_cpu386_io_read8_handler io_read8;
+    a5vm_cpu386_io_write8_handler io_write8;
+    void *io_context;
+};
 
 void a5vm_cpu386_init(a5vm_cpu386 *cpu, a5vm_memory *memory);
 void a5vm_cpu386_reset(a5vm_cpu386 *cpu);
+void a5vm_cpu386_set_interrupt_handler(a5vm_cpu386 *cpu,
+                                        a5vm_cpu386_interrupt_handler handler,
+                                        void *context);
+void a5vm_cpu386_set_io_handlers(a5vm_cpu386 *cpu,
+                                 a5vm_cpu386_io_read8_handler read8,
+                                 a5vm_cpu386_io_write8_handler write8,
+                                 void *context);
 a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu);
 a5vm_cpu_status a5vm_cpu386_run(a5vm_cpu386 *cpu, uint64_t max_steps);
 uint32_t a5vm_cpu386_linear_address(const a5vm_cpu386 *cpu,
