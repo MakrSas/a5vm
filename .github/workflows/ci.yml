@@ -53,6 +53,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install build tools
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
         run: brew install ldid xz
 
       - name: Install Theos and iPhoneOS SDK
