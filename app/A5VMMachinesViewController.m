@@ -37,6 +37,25 @@ static NSString * const A5VMMachinesDefaultsKey = @"A5VM.Machines";
         self.machines = [NSMutableArray arrayWithObject:[self defaultMachine]];
         [self saveMachines];
     }
+    [self migrateMachines];
+}
+
+- (void)migrateMachines {
+    NSUInteger index;
+    for (index = 0; index < [self.machines count]; ++index) {
+        NSDictionary *source = [self.machines objectAtIndex:index];
+        NSMutableDictionary *machine = [NSMutableDictionary dictionaryWithDictionary:source];
+        if ([[machine objectForKey:@"storage"] length] == 0) {
+            [machine setObject:@"1.44 MB floppy" forKey:@"storage"];
+        }
+        if ([[machine objectForKey:@"diskImage"] length] == 0) {
+            [machine setObject:[NSString stringWithFormat:@"machine-%lu.dsk",
+                                (unsigned long)index + 1ul]
+                         forKey:@"diskImage"];
+        }
+        [self.machines replaceObjectAtIndex:index withObject:machine];
+    }
+    [self saveMachines];
 }
 
 - (NSDictionary *)defaultMachine {

@@ -1,5 +1,6 @@
 #import "A5VMMachineSettingsViewController.h"
 #import "A5VMViewController.h"
+#import "A5VMDiskImageViewController.h"
 
 @implementation A5VMMachineSettingsViewController
 
@@ -86,6 +87,15 @@
         alert.alertViewStyle = UIAlertViewStylePlainTextInput;
         [alert textFieldAtIndex:0].text = [_machine objectForKey:@"name"];
         [alert show];
+    } else if (indexPath.section == 1 && indexPath.row == 2) {
+        NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                    NSUserDomainMask, YES);
+        NSString *filename = [_machine objectForKey:@"diskImage"];
+        if ([filename length] == 0) filename = @"a5vm-demo.dsk";
+        NSString *path = [[directories objectAtIndex:0] stringByAppendingPathComponent:filename];
+        A5VMDiskImageViewController *disk =
+            [[[A5VMDiskImageViewController alloc] initWithDiskPath:path] autorelease];
+        [self.navigationController pushViewController:disk animated:YES];
     }
 }
 
