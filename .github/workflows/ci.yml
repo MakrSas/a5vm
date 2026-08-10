@@ -87,7 +87,7 @@ jobs:
             src/ios_main.c src/ios_start.c
           clang -target armv7-apple-ios6.0 -isysroot "$SDK" \
             -miphoneos-version-min=6.0 -nostdlib -Wl,-e,_start \
-            -L"$RUNNER_TEMP/libsystem-stub" -lSystem \
+            -Wl,-needed_library,"$RUNNER_TEMP/libsystem-stub/libSystem.dylib" \
             memory.o cpu8086.o freestanding.o ios_main.o ios_start.o \
             -o build/ios-armv7/a5vm
           ldid -S build/ios-armv7/a5vm
