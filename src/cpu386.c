@@ -581,6 +581,27 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
                        (uint16_t)(int16_t)(int8_t)reg8(cpu, 0));
         return cpu->status;
     }
+    if (opcode == 0x11 || opcode == 0x13) {
+        int address32 = cpu->default_operand_size32;
+        uint32_t destination;
+        uint32_t source;
+        if (!decode_modrm(cpu, &m, address32)) return cpu->status;
+        if (opcode == 0x11) {
+            destination = read_modrm_value(cpu, &m, operand32, address32);
+            source = operand32 ? cpu->regs[m.reg] : reg16(cpu, m.reg);
+            write_modrm_value(cpu, &m,
+                              adc_value(cpu, destination, source, operand32),
+                              operand32, address32);
+        } else {
+            destination = operand32 ? cpu->regs[m.reg] : reg16(cpu, m.reg);
+            source = read_modrm_value(cpu, &m, operand32, address32);
+            if (operand32) cpu->regs[m.reg] =
+                adc_value(cpu, destination, source, operand32);
+            else set_reg16(cpu, m.reg, (uint16_t)
+                           adc_value(cpu, destination, source, operand32));
+        }
+        return cpu->status;
+    }
     if (opcode == 0x33 || opcode == 0x31) {
         int address32 = cpu->default_operand_size32;
         uint32_t left;
