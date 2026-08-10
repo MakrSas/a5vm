@@ -35,3 +35,12 @@ jobs:
 
       - name: Run demo
         run: ./build/a5vm-demo
+
+      - name: Upload portable core artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a5vm-${{ matrix.os }}-${{ github.sha }}
+          path: |
+            build/a5vm-demo
+            build/a5vm-tests
+          if-no-files-found: error
