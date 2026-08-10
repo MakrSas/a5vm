@@ -7,6 +7,7 @@ APPLICATION_NAME = A5VM
 A5VM_FILES = app/main.m app/A5VMAppDelegate.m app/A5VMMachinesViewController.m \
              app/A5VMMachineSettingsViewController.m app/A5VMNewMachineViewController.m \
              app/A5VMViewController.m \
+             app/A5VMIconButton.m \
              app/A5VMDiskImageViewController.m app/A5VMDisplayView.m \
              src/memory.c \
              src/cpu8086.c src/cpu386.c src/vga_text.c src/keyboard.c src/floppy.c src/disk.c src/ide.c src/bios.c src/bios386.c \

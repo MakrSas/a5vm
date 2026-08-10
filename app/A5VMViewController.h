@@ -3,6 +3,7 @@
 #include "a5vm/machine.h"
 
 @class A5VMDisplayView;
+@class A5VMIconButton;
 
 @interface A5VMViewController : UIViewController <UITextFieldDelegate> {
     NSDictionary *_machine;
@@ -10,12 +11,12 @@
     UILabel *_screenTitle;
     A5VMDisplayView *_displayView;
     UILabel *_statusLabel;
-    UIButton *_runButton;
-    UIButton *_resetButton;
-    UIButton *_powerButton;
-    UIButton *_pauseButton;
-    UIButton *_keyboardButton;
-    UIButton *_menuButton;
+    A5VMIconButton *_runButton;
+    A5VMIconButton *_resetButton;
+    A5VMIconButton *_powerButton;
+    A5VMIconButton *_pauseButton;
+    A5VMIconButton *_keyboardButton;
+    A5VMIconButton *_menuButton;
     UIView *_controlPanel;
     UITextField *_inputField;
     NSTimer *_runTimer;

@@ -1,5 +1,6 @@
 #import "A5VMViewController.h"
 #import "A5VMDisplayView.h"
+#import "A5VMIconButton.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -70,16 +71,15 @@
     _controlPanel = [[UIView alloc] initWithFrame:CGRectMake(6.0f, 6.0f,
                                                                bounds.size.width - 56.0f, 48.0f)];
     _controlPanel.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.92f];
+    _screenTitle.hidden = YES;
+    _statusLabel.hidden = YES;
     [_controlPanel addSubview:_screenTitle];
     [_controlPanel addSubview:_statusLabel];
     [self.view addSubview:_controlPanel];
 
-    _menuButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    _menuButton.frame = CGRectMake(bounds.size.width - 48.0f, 6.0f, 42.0f, 48.0f);
-    [_menuButton setTitle:@"›" forState:UIControlStateNormal];
-    _menuButton.titleLabel.font = [UIFont boldSystemFontOfSize:32.0f];
-    [_menuButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    _menuButton.backgroundColor = [UIColor colorWithWhite:0.05f alpha:0.92f];
+    _menuButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _menuButton.iconType = A5VMIconArrowRight;
+    _menuButton.accessibilityLabel = @"Show VM controls";
     [_menuButton addTarget:self action:@selector(toggleControls:)
           forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:_menuButton];
@@ -89,32 +89,37 @@
         UIViewAutoresizingFlexibleHeight;
     [self.view insertSubview:_displayView atIndex:0];
 
-    _runButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_runButton setTitle:@"Run" forState:UIControlStateNormal];
+    _runButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _runButton.iconType = A5VMIconRun;
+    _runButton.accessibilityLabel = @"Run VM";
     [_runButton addTarget:self action:@selector(runDemo:)
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_runButton];
 
-    _resetButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_resetButton setTitle:@"Reset" forState:UIControlStateNormal];
+    _resetButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _resetButton.iconType = A5VMIconReset;
+    _resetButton.accessibilityLabel = @"Reset VM";
     [_resetButton addTarget:self action:@selector(resetVM:)
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_resetButton];
 
-    _powerButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
+    _powerButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _powerButton.iconType = A5VMIconPower;
+    _powerButton.accessibilityLabel = @"Power VM";
     [_powerButton addTarget:self action:@selector(powerVM:)
            forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_powerButton];
 
-    _pauseButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+    _pauseButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _pauseButton.iconType = A5VMIconPause;
+    _pauseButton.accessibilityLabel = @"Pause or resume VM";
     [_pauseButton addTarget:self action:@selector(pauseVM:)
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_pauseButton];
 
-    _keyboardButton = [[UIButton buttonWithType:UIButtonTypeRoundedRect] retain];
-    [_keyboardButton setTitle:@"Keys" forState:UIControlStateNormal];
+    _keyboardButton = [[A5VMIconButton alloc] initWithFrame:CGRectZero];
+    _keyboardButton.iconType = A5VMIconKeyboard;
+    _keyboardButton.accessibilityLabel = @"Show keyboard";
     [_keyboardButton addTarget:self action:@selector(showKeyboard:)
           forControlEvents:UIControlEventTouchUpInside];
     [_controlPanel addSubview:_keyboardButton];
@@ -146,16 +151,15 @@
 - (void)layoutOverlayControls {
     CGRect bounds = self.view.bounds;
     _controlPanel.frame = CGRectMake(6.0f, 6.0f, bounds.size.width - 56.0f, 48.0f);
-    _menuButton.frame = CGRectMake(bounds.size.width - 48.0f, 6.0f, 42.0f, 48.0f);
+    _menuButton.frame = CGRectMake(bounds.size.width - 46.0f, 6.0f, 40.0f, 40.0f);
     _screenTitle.frame = CGRectMake(8.0f, 3.0f, 116.0f, 24.0f);
     _statusLabel.frame = CGRectMake(124.0f, 3.0f,
                                     _controlPanel.bounds.size.width - 132.0f, 24.0f);
-    _runButton.frame = CGRectMake(6.0f, 25.0f, 52.0f, 22.0f);
-    _resetButton.frame = CGRectMake(62.0f, 25.0f, 58.0f, 22.0f);
-    _powerButton.frame = CGRectMake(124.0f, 25.0f, 52.0f, 22.0f);
-    _pauseButton.frame = CGRectMake(180.0f, 25.0f, 52.0f, 22.0f);
-    _keyboardButton.frame = CGRectMake(236.0f, 25.0f,
-                                       _controlPanel.bounds.size.width - 242.0f, 22.0f);
+    _runButton.frame = CGRectMake(4.0f, 4.0f, 40.0f, 40.0f);
+    _resetButton.frame = CGRectMake(48.0f, 4.0f, 40.0f, 40.0f);
+    _powerButton.frame = CGRectMake(92.0f, 4.0f, 40.0f, 40.0f);
+    _pauseButton.frame = CGRectMake(136.0f, 4.0f, 40.0f, 40.0f);
+    _keyboardButton.frame = CGRectMake(180.0f, 4.0f, 40.0f, 40.0f);
     _inputField.frame = CGRectMake(8.0f, bounds.size.height - 42.0f,
                                    bounds.size.width - 16.0f, 34.0f);
 }
@@ -163,7 +167,8 @@
 - (void)setControlsVisible:(BOOL)visible animated:(BOOL)animated {
     _controlsVisible = visible;
     _controlPanel.hidden = !visible;
-    [_menuButton setTitle:visible ? @"‹" : @"›" forState:UIControlStateNormal];
+    _menuButton.iconType = visible ? A5VMIconArrowLeft : A5VMIconArrowRight;
+    _menuButton.accessibilityLabel = visible ? @"Hide VM controls" : @"Show VM controls";
     if (animated) {
         _menuButton.alpha = 0.0f;
         [UIView beginAnimations:nil context:nil];
@@ -182,8 +187,7 @@
     (void)sender;
     _keyboardVisible = !_keyboardVisible;
     _inputField.hidden = !_keyboardVisible;
-    [_keyboardButton setTitle:_keyboardVisible ? @"Hide" : @"Keys"
-                      forState:UIControlStateNormal];
+    _keyboardButton.accessibilityValue = _keyboardVisible ? @"Keyboard visible" : @"Keyboard hidden";
     if (_keyboardVisible) [_inputField becomeFirstResponder];
     else [_inputField resignFirstResponder];
 }
@@ -197,12 +201,12 @@
         _keyboardVisible = NO;
         _inputField.hidden = YES;
         [_inputField resignFirstResponder];
-        [_powerButton setTitle:@"On" forState:UIControlStateNormal];
+        _powerButton.accessibilityValue = @"Off";
         _statusLabel.text = @"Off";
         [self renderVGA];
     } else {
         _poweredOn = YES;
-        [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
+        _powerButton.accessibilityValue = @"On";
         [self resetVM:nil];
     }
 }
@@ -212,7 +216,7 @@
     if (!_isRunning) return;
     if (_isPaused) {
         _isPaused = NO;
-        [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+        _pauseButton.accessibilityValue = @"Running";
         _statusLabel.text = @"Running";
         _runTimer = [NSTimer scheduledTimerWithTimeInterval:0.02
                                                        target:self
@@ -221,7 +225,7 @@
                                                       repeats:YES];
     } else {
         _isPaused = YES;
-        [_pauseButton setTitle:@"Resume" forState:UIControlStateNormal];
+        _pauseButton.accessibilityValue = @"Paused";
         _statusLabel.text = @"Paused";
         [_runTimer invalidate];
         [_runTimer release];
@@ -235,7 +239,7 @@
     _runTimer = nil;
     _isRunning = NO;
     _isPaused = NO;
-    [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+    _pauseButton.accessibilityValue = @"Ready";
 }
 
 - (void)finishRunWithStatus:(a5vm_cpu_status)status {
@@ -347,7 +351,7 @@
     [self renderVGA];
     _isRunning = YES;
     _isPaused = NO;
-    [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+    _pauseButton.accessibilityValue = @"Running";
     _statusLabel.text = @"Running";
     _runTimer = [NSTimer scheduledTimerWithTimeInterval:0.02
                                                    target:self
@@ -362,7 +366,7 @@
     if (!_runtime) return;
     [self stopRunner];
     _poweredOn = YES;
-    [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
+    _powerButton.accessibilityValue = @"On";
     a5vm_machine_reset(_runtime);
     BOOL is386 = [[[_machine objectForKey:@"architecture"]
                    lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
