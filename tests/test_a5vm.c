@@ -1,6 +1,7 @@
 #include <stdio.h>
 
 #include "a5vm/cpu8086.h"
+#include "a5vm/cpu386.h"
 #include "a5vm/floppy.h"
 #include "a5vm/keyboard.h"
 #include "a5vm/machine.h"
@@ -53,6 +54,46 @@ static void test_arithmetic_and_branch(void) {
     CHECK(cpu.regs[A5VM_REG_AX] == 5);
     CHECK(cpu.regs[A5VM_REG_CX] == 0);
     CHECK((cpu.flags & A5VM_FLAG_ZF) != 0);
+}
+
+static void test_i386_protected_mode(void) {
+    a5vm_memory memory;
+    a5vm_cpu386 cpu;
+    static const uint8_t gdt[] = {
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0xFF, 0xFF, 0x00, 0x00, 0x00, 0x9A, 0xCF, 0x00,
+        0xFF, 0xFF, 0x00, 0x00, 0x00, 0x92, 0xCF, 0x00
+    };
+    static const uint8_t descriptor_pointer[] = {
+        0x17, 0x00, 0x00, 0x10, 0x00, 0x00
+    };
+    static const uint8_t transition[] = {
+        0x0F, 0x01, 0x16, 0x00, 0x12, /* lgdt [1200h] */
+        0xB8, 0x01, 0x00,             /* mov ax, 1 */
+        0x0F, 0x22, 0xC0,             /* mov cr0, eax */
+        0x66, 0xEA, 0x00, 0x03, 0x00, 0x00, 0x08, 0x00
+    };
+    static const uint8_t protected_code[] = {
+        0xB8, 0x78, 0x56, 0x34, 0x12, /* mov eax, 12345678h */
+        0x05, 0x01, 0x00, 0x00, 0x00,
+        0xF4
+    };
+
+    a5vm_memory_init(&memory);
+    a5vm_memory_load(&memory, 0x1000, gdt, sizeof(gdt));
+    a5vm_memory_load(&memory, 0x1200, descriptor_pointer,
+                     sizeof(descriptor_pointer));
+    a5vm_memory_load(&memory, 0x0200, transition, sizeof(transition));
+    a5vm_memory_load(&memory, 0x0300, protected_code,
+                     sizeof(protected_code));
+    a5vm_cpu386_init(&cpu, &memory);
+    cpu.segs[A5VM_CPU386_SEG_CS] = 0;
+    cpu.segs[A5VM_CPU386_SEG_DS] = 0;
+    cpu.eip = 0x0200;
+    CHECK(a5vm_cpu386_run(&cpu, 30) == A5VM_CPU_HALTED);
+    CHECK(cpu.protected_mode);
+    CHECK(cpu.segs[A5VM_CPU386_SEG_CS] == 0x0008);
+    CHECK(cpu.regs[A5VM_CPU386_REG_EAX] == 0x12345679u);
 }
 
 static void test_stack(void) {
@@ -277,6 +318,7 @@ static void test_floppy_and_boot(void) {
 int main(void) {
     test_memory_wrap();
     test_arithmetic_and_branch();
+    test_i386_protected_mode();
     test_stack();
     test_vga_text();
     test_keyboard();

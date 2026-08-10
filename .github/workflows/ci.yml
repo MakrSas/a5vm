@@ -21,14 +21,14 @@ jobs:
         run: |
           mkdir -p build
           cc -std=c11 -Wall -Wextra -Werror -I include \
-            src/memory.c src/cpu8086.c src/vga_text.c src/keyboard.c \
+            src/memory.c src/cpu8086.c src/cpu386.c src/vga_text.c src/keyboard.c \
             src/floppy.c src/disk.c src/ide.c src/bios.c src/pic8259.c src/pit8253.c src/machine.c src/main.c \
             -o build/a5vm-demo
 
       - name: Build tests
         run: |
           cc -std=c11 -Wall -Wextra -Werror -I include \
-            src/memory.c src/cpu8086.c src/vga_text.c src/keyboard.c \
+            src/memory.c src/cpu8086.c src/cpu386.c src/vga_text.c src/keyboard.c \
             src/floppy.c src/disk.c src/ide.c src/bios.c src/pic8259.c src/pit8253.c src/machine.c tests/test_a5vm.c \
             -o build/a5vm-tests
 

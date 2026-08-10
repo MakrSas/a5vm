@@ -17,6 +17,7 @@ $build = Join-Path $root 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $common = @('-std=c11', '-Wall', '-Wextra', '-Werror', '-I', (Join-Path $root 'include'))
 $sources = @((Join-Path $root 'src\memory.c'), (Join-Path $root 'src\cpu8086.c'),
+    (Join-Path $root 'src\cpu386.c'),
     (Join-Path $root 'src\vga_text.c'), (Join-Path $root 'src\keyboard.c'),
     (Join-Path $root 'src\floppy.c'), (Join-Path $root 'src\disk.c'),
     (Join-Path $root 'src\ide.c'),
