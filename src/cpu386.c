@@ -36,12 +36,34 @@ static void write32(a5vm_cpu386 *cpu, uint32_t address, uint32_t value) {
     a5vm_memory_write16(cpu->memory, address + 2u, (uint16_t)(value >> 16));
 }
 
+static uint8_t read8(const a5vm_cpu386 *cpu, uint32_t address) {
+    return a5vm_memory_read8(cpu->memory, address);
+}
+
+static void write8(a5vm_cpu386 *cpu, uint32_t address, uint8_t value) {
+    a5vm_memory_write8(cpu->memory, address, value);
+}
+
 static uint16_t reg16(const a5vm_cpu386 *cpu, unsigned index) {
     return (uint16_t)cpu->regs[index];
 }
 
 static void set_reg16(a5vm_cpu386 *cpu, unsigned index, uint16_t value) {
     cpu->regs[index] = (cpu->regs[index] & 0xFFFF0000u) | value;
+}
+
+static uint8_t reg8(const a5vm_cpu386 *cpu, unsigned index) {
+    if (index < 4) return (uint8_t)cpu->regs[index];
+    return (uint8_t)(cpu->regs[index - 4] >> 8);
+}
+
+static void set_reg8(a5vm_cpu386 *cpu, unsigned index, uint8_t value) {
+    if (index < 4) cpu->regs[index] = (cpu->regs[index] & 0xFFFFFF00u) | value;
+    else {
+        index -= 4;
+        cpu->regs[index] = (cpu->regs[index] & 0xFFFF00FFu) |
+            ((uint32_t)value << 8);
+    }
 }
 
 static void set_flag(a5vm_cpu386 *cpu, uint32_t flag, int value) {
@@ -55,6 +77,11 @@ static void update_flags(a5vm_cpu386 *cpu, uint32_t value, int operand32) {
     value &= mask;
     set_flag(cpu, A5VM_FLAG_ZF, value == 0);
     set_flag(cpu, A5VM_FLAG_SF, (value & sign) != 0);
+}
+
+static void update_flags8(a5vm_cpu386 *cpu, uint8_t value) {
+    set_flag(cpu, A5VM_FLAG_ZF, value == 0);
+    set_flag(cpu, A5VM_FLAG_SF, (value & 0x80u) != 0);
 }
 
 static uint32_t add_value(a5vm_cpu386 *cpu, uint32_t left, uint32_t right,
@@ -72,6 +99,25 @@ static uint32_t sub_value(a5vm_cpu386 *cpu, uint32_t left, uint32_t right,
     uint32_t mask = operand32 ? 0xFFFFFFFFu : 0xFFFFu;
     uint32_t value = (left - right) & mask;
     set_flag(cpu, A5VM_FLAG_CF, (left & mask) < (right & mask));
+    update_flags(cpu, value, operand32);
+    return value;
+}
+
+static uint8_t sub_value8(a5vm_cpu386 *cpu, uint8_t left, uint8_t right) {
+    uint8_t value = (uint8_t)(left - right);
+    set_flag(cpu, A5VM_FLAG_CF, left < right);
+    update_flags8(cpu, value);
+    return value;
+}
+
+static uint32_t adc_value(a5vm_cpu386 *cpu, uint32_t left, uint32_t right,
+                          int operand32) {
+    uint64_t carry = (cpu->eflags & A5VM_FLAG_CF) != 0;
+    uint64_t result = (uint64_t)(left & (operand32 ? 0xFFFFFFFFu : 0xFFFFu)) +
+        (right & (operand32 ? 0xFFFFFFFFu : 0xFFFFu)) + carry;
+    uint32_t mask = operand32 ? 0xFFFFFFFFu : 0xFFFFu;
+    uint32_t value = (uint32_t)result & mask;
+    set_flag(cpu, A5VM_FLAG_CF, result > mask);
     update_flags(cpu, value, operand32);
     return value;
 }
@@ -222,6 +268,36 @@ static uint32_t pop_value(a5vm_cpu386 *cpu, int operand32) {
     return value;
 }
 
+static uint8_t read_modrm8(a5vm_cpu386 *cpu, const modrm386 *m) {
+    if (m->mod == 3) return reg8(cpu, m->rm);
+    return read8(cpu, memory_address(cpu, m, 0));
+}
+
+static void write_modrm8(a5vm_cpu386 *cpu, const modrm386 *m, uint8_t value) {
+    if (m->mod == 3) set_reg8(cpu, m->rm, value);
+    else write8(cpu, memory_address(cpu, m, 0), value);
+}
+
+static uint32_t read_modrm_value(a5vm_cpu386 *cpu, const modrm386 *m,
+                                 int operand32, int address32) {
+    if (m->mod == 3) return operand32 ? cpu->regs[m->rm] : reg16(cpu, m->rm);
+    return operand32 ? read32(cpu, memory_address(cpu, m, address32)) :
+        read16(cpu, memory_address(cpu, m, address32));
+}
+
+static void write_modrm_value(a5vm_cpu386 *cpu, const modrm386 *m,
+                              uint32_t value, int operand32, int address32) {
+    if (m->mod == 3) {
+        if (operand32) cpu->regs[m->rm] = value;
+        else set_reg16(cpu, m->rm, (uint16_t)value);
+    } else if (operand32) {
+        write32(cpu, memory_address(cpu, m, address32), value);
+    } else {
+        a5vm_memory_write16(cpu->memory, memory_address(cpu, m, address32),
+                            (uint16_t)value);
+    }
+}
+
 static int load_segment(a5vm_cpu386 *cpu, unsigned segment, uint16_t selector) {
     uint32_t base;
     uint32_t limit;
@@ -299,13 +375,19 @@ const char *a5vm_cpu386_fault(const a5vm_cpu386 *cpu) {
 a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
     uint8_t opcode;
     int operand32;
+    int repeat;
     modrm386 m;
     if (cpu->status != A5VM_CPU_RUNNING) return cpu->status;
     operand32 = cpu->default_operand_size32;
+    repeat = 0;
     opcode = fetch8(cpu);
     cpu->steps++;
     if (opcode == 0x66) {
         operand32 = !operand32;
+        opcode = fetch8(cpu);
+    }
+    if (opcode == 0xF2 || opcode == 0xF3) {
+        repeat = opcode == 0xF3 ? 1 : 2;
         opcode = fetch8(cpu);
     }
     if (opcode == 0x90) return cpu->status;
@@ -319,6 +401,14 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
     }
     if (opcode == 0xFB) {
         cpu->eflags |= A5VM_FLAG_IF;
+        return cpu->status;
+    }
+    if (opcode == 0xFC) {
+        cpu->eflags &= ~((uint32_t)A5VM_FLAG_DF);
+        return cpu->status;
+    }
+    if (opcode == 0xFD) {
+        cpu->eflags |= (uint32_t)A5VM_FLAG_DF;
         return cpu->status;
     }
     if (opcode == 0x06 || opcode == 0x0E || opcode == 0x16 || opcode == 0x1E) {
@@ -350,6 +440,54 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
         uint32_t value = opcode == 0x68 ?
             (operand32 ? fetch32(cpu) : fetch16(cpu)) : (uint32_t)(int8_t)fetch8(cpu);
         push_value(cpu, value, operand32);
+        return cpu->status;
+    }
+    if (opcode == 0xA4 || opcode == 0xA6 || opcode == 0xAC) {
+        uint32_t count = repeat ? (operand32 ? cpu->regs[A5VM_CPU386_REG_ECX] :
+                                   reg16(cpu, A5VM_CPU386_REG_ECX)) : 1u;
+        int decrement = (cpu->eflags & A5VM_FLAG_DF) != 0;
+        int step = decrement ? -1 : 1;
+        if (repeat && count == 0) return cpu->status;
+        while (count != 0) {
+            uint32_t source_offset = operand32 ? cpu->regs[A5VM_CPU386_REG_ESI] :
+                reg16(cpu, A5VM_CPU386_REG_ESI);
+            uint32_t destination_offset = operand32 ? cpu->regs[A5VM_CPU386_REG_EDI] :
+                reg16(cpu, A5VM_CPU386_REG_EDI);
+            uint8_t source = read8(cpu, checked_linear_address(
+                cpu, A5VM_CPU386_SEG_DS, source_offset));
+            if (opcode == 0xA4) {
+                write8(cpu, checked_linear_address(cpu, A5VM_CPU386_SEG_ES,
+                                                   destination_offset), source);
+            } else if (opcode == 0xA6) {
+                (void)sub_value8(cpu, source, read8(cpu, checked_linear_address(
+                    cpu, A5VM_CPU386_SEG_ES, destination_offset)));
+            } else {
+                set_reg8(cpu, 0, source);
+            }
+            if (operand32) {
+                cpu->regs[A5VM_CPU386_REG_ESI] += step;
+                if (opcode == 0xA4 || opcode == 0xA6) {
+                    cpu->regs[A5VM_CPU386_REG_EDI] += step;
+                }
+            } else {
+                set_reg16(cpu, A5VM_CPU386_REG_ESI,
+                          (uint16_t)(reg16(cpu, A5VM_CPU386_REG_ESI) + step));
+                if (opcode == 0xA4 || opcode == 0xA6) {
+                    set_reg16(cpu, A5VM_CPU386_REG_EDI,
+                              (uint16_t)(reg16(cpu, A5VM_CPU386_REG_EDI) + step));
+                }
+            }
+            if (!repeat) break;
+            --count;
+            if (opcode == 0xA6 && ((repeat == 1 &&
+                                    (cpu->eflags & A5VM_FLAG_ZF) == 0) ||
+                                   (repeat == 2 &&
+                                    (cpu->eflags & A5VM_FLAG_ZF) != 0))) break;
+        }
+        if (repeat) {
+            if (operand32) cpu->regs[A5VM_CPU386_REG_ECX] = count;
+            else set_reg16(cpu, A5VM_CPU386_REG_ECX, (uint16_t)count);
+        }
         return cpu->status;
     }
     if (opcode >= 0xB0 && opcode <= 0xB7) {
@@ -434,6 +572,102 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
     if (opcode == 0x3D) {
         if (operand32) (void)sub_value(cpu, cpu->regs[A5VM_CPU386_REG_EAX], fetch32(cpu), 1);
         else (void)sub_value(cpu, cpu->regs[A5VM_CPU386_REG_EAX], fetch16(cpu), 0);
+        return cpu->status;
+    }
+    if (opcode == 0x98) {
+        if (operand32) cpu->regs[A5VM_CPU386_REG_EAX] =
+            (uint32_t)(int32_t)(int16_t)reg16(cpu, A5VM_CPU386_REG_EAX);
+        else set_reg16(cpu, A5VM_CPU386_REG_EAX,
+                       (uint16_t)(int16_t)(int8_t)reg8(cpu, 0));
+        return cpu->status;
+    }
+    if (opcode == 0x33 || opcode == 0x31) {
+        int address32 = cpu->default_operand_size32;
+        uint32_t left;
+        uint32_t right;
+        if (!decode_modrm(cpu, &m, address32)) return cpu->status;
+        left = operand32 ? cpu->regs[m.reg] : reg16(cpu, m.reg);
+        right = read_modrm_value(cpu, &m, operand32, address32);
+        if (opcode == 0x31) {
+            uint32_t value = (operand32 ? cpu->regs[m.rm] : reg16(cpu, m.rm)) ^
+                (operand32 ? cpu->regs[m.reg] : reg16(cpu, m.reg));
+            write_modrm_value(cpu, &m, value, operand32, address32);
+        } else {
+            uint32_t value = left ^ right;
+            set_flag(cpu, A5VM_FLAG_CF, 0);
+            update_flags(cpu, value, operand32);
+            if (operand32) cpu->regs[m.reg] = value;
+            else set_reg16(cpu, m.reg, (uint16_t)value);
+        }
+        return cpu->status;
+    }
+    if (opcode == 0xC5) {
+        int address32 = cpu->default_operand_size32;
+        uint32_t address;
+        uint16_t selector;
+        if (!decode_modrm(cpu, &m, address32) || m.mod == 3) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "unsupported LDS form");
+            return cpu->status;
+        }
+        address = memory_address(cpu, &m, address32);
+        if (operand32) {
+            cpu->regs[m.reg] = read32(cpu, address);
+            selector = read16(cpu, address + 4u);
+        } else {
+            set_reg16(cpu, m.reg, read16(cpu, address));
+            selector = read16(cpu, address + 2u);
+        }
+        if (!load_segment(cpu, A5VM_CPU386_SEG_DS, selector)) {
+            faultf(cpu, A5VM_CPU_FAULT, "invalid LDS selector 0x%04X", selector);
+        }
+        return cpu->status;
+    }
+    if (opcode == 0x88 || opcode == 0x8A) {
+        int address32 = cpu->default_operand_size32;
+        if (!decode_modrm(cpu, &m, address32)) return cpu->status;
+        if (opcode == 0x88) write_modrm8(cpu, &m, reg8(cpu, m.reg));
+        else set_reg8(cpu, m.reg, read_modrm8(cpu, &m));
+        return cpu->status;
+    }
+    if (opcode == 0xC6 || opcode == 0xC7) {
+        int address32 = cpu->default_operand_size32;
+        if (!decode_modrm(cpu, &m, address32) || m.reg != 0) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "unsupported MOV immediate form");
+            return cpu->status;
+        }
+        if (opcode == 0xC6) write_modrm8(cpu, &m, fetch8(cpu));
+        else write_modrm_value(cpu, &m, operand32 ? fetch32(cpu) : fetch16(cpu),
+                               operand32, address32);
+        return cpu->status;
+    }
+    if (opcode == 0x38 || opcode == 0x3A || opcode == 0x3C) {
+        int address32 = cpu->default_operand_size32;
+        uint8_t left;
+        uint8_t right;
+        if (opcode == 0x3C) {
+            left = reg8(cpu, 0);
+            right = fetch8(cpu);
+        } else {
+            if (!decode_modrm(cpu, &m, address32)) return cpu->status;
+            left = opcode == 0x38 ? read_modrm8(cpu, &m) : reg8(cpu, m.reg);
+            right = opcode == 0x38 ? reg8(cpu, m.reg) : read_modrm8(cpu, &m);
+        }
+        (void)sub_value8(cpu, left, right);
+        return cpu->status;
+    }
+    if (opcode == 0x84 || opcode == 0x85) {
+        int address32 = cpu->default_operand_size32;
+        uint32_t value;
+        if (!decode_modrm(cpu, &m, address32)) return cpu->status;
+        if (opcode == 0x84) {
+            value = read_modrm8(cpu, &m) & reg8(cpu, m.reg);
+            update_flags8(cpu, (uint8_t)value);
+        } else {
+            value = read_modrm_value(cpu, &m, operand32, address32) &
+                (operand32 ? cpu->regs[m.reg] : reg16(cpu, m.reg));
+            update_flags(cpu, value, operand32);
+        }
+        set_flag(cpu, A5VM_FLAG_CF, 0);
         return cpu->status;
     }
     if (opcode == 0x8E) {
