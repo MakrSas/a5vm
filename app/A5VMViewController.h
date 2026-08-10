@@ -10,16 +10,24 @@
     UILabel *_screenTitle;
     A5VMDisplayView *_displayView;
     UILabel *_statusLabel;
-    UILabel *_inputLabel;
     UIButton *_runButton;
     UIButton *_resetButton;
+    UIButton *_pauseButton;
+    UIButton *_keyboardButton;
+    UIButton *_menuButton;
+    UIView *_controlPanel;
     UITextField *_inputField;
     a5vm_machine *_runtime;
+    BOOL _controlsVisible;
+    BOOL _keyboardVisible;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine;
 - (void)runDemo:(id)sender;
 - (void)resetVM:(id)sender;
+- (void)toggleControls:(id)sender;
+- (void)showKeyboard:(id)sender;
+- (void)pauseVM:(id)sender;
 - (BOOL)textFieldShouldReturn:(UITextField *)textField;
 
 @end

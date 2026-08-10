@@ -9,6 +9,8 @@ typedef struct {
     uint8_t reg;
     uint8_t rm;
     uint32_t displacement;
+    uint32_t base;
+    unsigned segment;
 } modrm386;
 
 static void faultf(a5vm_cpu386 *cpu, a5vm_cpu_status status,
@@ -32,6 +34,14 @@ static uint32_t read32(const a5vm_cpu386 *cpu, uint32_t address) {
 static void write32(a5vm_cpu386 *cpu, uint32_t address, uint32_t value) {
     a5vm_memory_write16(cpu->memory, address, (uint16_t)value);
     a5vm_memory_write16(cpu->memory, address + 2u, (uint16_t)(value >> 16));
+}
+
+static uint16_t reg16(const a5vm_cpu386 *cpu, unsigned index) {
+    return (uint16_t)cpu->regs[index];
+}
+
+static void set_reg16(a5vm_cpu386 *cpu, unsigned index, uint16_t value) {
+    cpu->regs[index] = (cpu->regs[index] & 0xFFFF0000u) | value;
 }
 
 static void set_flag(a5vm_cpu386 *cpu, uint32_t flag, int value) {
@@ -135,26 +145,81 @@ static int decode_modrm(a5vm_cpu386 *cpu, modrm386 *m, int address32) {
     m->reg = (value >> 3) & 7u;
     m->rm = value & 7u;
     m->displacement = 0;
+    m->base = 0;
+    m->segment = A5VM_CPU386_SEG_DS;
     if (m->mod == 3) return 1;
-    if (!address32 && m->mod == 0 && m->rm == 6) {
-        m->displacement = fetch16(cpu);
-        return 1;
+    if (address32) {
+        if (m->rm == 4) {
+            faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "i386 SIB addressing");
+            return 0;
+        }
+        if (m->mod == 0 && m->rm == 5) {
+            m->displacement = fetch32(cpu);
+        } else {
+            m->base = cpu->regs[m->rm];
+            if (m->rm == 5) m->segment = A5VM_CPU386_SEG_SS;
+            if (m->mod == 1) m->displacement = (int8_t)fetch8(cpu);
+            else if (m->mod == 2) m->displacement = fetch32(cpu);
+        }
+    } else {
+        if (m->mod == 0 && m->rm == 6) {
+            m->displacement = fetch16(cpu);
+        } else {
+            switch (m->rm) {
+                case 0: m->base = (uint32_t)(reg16(cpu, A5VM_CPU386_REG_EBX) +
+                                              reg16(cpu, A5VM_CPU386_REG_ESI)); break;
+                case 1: m->base = (uint32_t)(reg16(cpu, A5VM_CPU386_REG_EBX) +
+                                              reg16(cpu, A5VM_CPU386_REG_EDI)); break;
+                case 2: m->base = (uint32_t)(reg16(cpu, A5VM_CPU386_REG_EBP) +
+                                              reg16(cpu, A5VM_CPU386_REG_ESI));
+                        m->segment = A5VM_CPU386_SEG_SS; break;
+                case 3: m->base = (uint32_t)(reg16(cpu, A5VM_CPU386_REG_EBP) +
+                                              reg16(cpu, A5VM_CPU386_REG_EDI));
+                        m->segment = A5VM_CPU386_SEG_SS; break;
+                case 4: m->base = reg16(cpu, A5VM_CPU386_REG_ESI); break;
+                case 5: m->base = reg16(cpu, A5VM_CPU386_REG_EDI); break;
+                case 6: m->base = reg16(cpu, A5VM_CPU386_REG_EBP);
+                        m->segment = A5VM_CPU386_SEG_SS; break;
+                case 7: m->base = reg16(cpu, A5VM_CPU386_REG_EBX); break;
+                default: break;
+            }
+            if (m->mod == 1) m->displacement = (int8_t)fetch8(cpu);
+            else if (m->mod == 2) m->displacement = fetch16(cpu);
+        }
     }
-    if (address32 && m->mod == 0 && m->rm == 5) {
-        m->displacement = fetch32(cpu);
-        return 1;
-    }
-    faultf(cpu, A5VM_CPU_UNIMPLEMENTED, "i386 addressing mode mod=%u rm=%u",
-           m->mod, m->rm);
-    return 0;
+    return cpu->status == A5VM_CPU_RUNNING;
 }
 
 static uint32_t memory_address(a5vm_cpu386 *cpu, const modrm386 *m,
                                int address32) {
     (void)address32;
-    if (m->mod == 0) return checked_linear_address(cpu, A5VM_CPU386_SEG_DS,
-                                                   m->displacement);
-    return 0;
+    return checked_linear_address(cpu, m->segment, m->base + m->displacement);
+}
+
+static uint32_t stack_pointer(const a5vm_cpu386 *cpu, int operand32) {
+    return operand32 ? cpu->regs[A5VM_CPU386_REG_ESP] : reg16(cpu, A5VM_CPU386_REG_ESP);
+}
+
+static void set_stack_pointer(a5vm_cpu386 *cpu, int operand32, uint32_t value) {
+    if (operand32) cpu->regs[A5VM_CPU386_REG_ESP] = value;
+    else set_reg16(cpu, A5VM_CPU386_REG_ESP, (uint16_t)value);
+}
+
+static void push_value(a5vm_cpu386 *cpu, uint32_t value, int operand32) {
+    uint32_t sp = stack_pointer(cpu, operand32) - (operand32 ? 4u : 2u);
+    set_stack_pointer(cpu, operand32, sp);
+    if (operand32) write32(cpu, checked_linear_address(cpu, A5VM_CPU386_SEG_SS, sp), value);
+    else a5vm_memory_write16(cpu->memory,
+                             checked_linear_address(cpu, A5VM_CPU386_SEG_SS, sp),
+                             (uint16_t)value);
+}
+
+static uint32_t pop_value(a5vm_cpu386 *cpu, int operand32) {
+    uint32_t sp = stack_pointer(cpu, operand32);
+    uint32_t address = checked_linear_address(cpu, A5VM_CPU386_SEG_SS, sp);
+    uint32_t value = operand32 ? read32(cpu, address) : read16(cpu, address);
+    set_stack_pointer(cpu, operand32, sp + (operand32 ? 4u : 2u));
+    return value;
 }
 
 static int load_segment(a5vm_cpu386 *cpu, unsigned segment, uint16_t selector) {
@@ -254,6 +319,37 @@ a5vm_cpu_status a5vm_cpu386_step(a5vm_cpu386 *cpu) {
     }
     if (opcode == 0xFB) {
         cpu->eflags |= A5VM_FLAG_IF;
+        return cpu->status;
+    }
+    if (opcode == 0x06 || opcode == 0x0E || opcode == 0x16 || opcode == 0x1E) {
+        unsigned segment = opcode == 0x06 ? A5VM_CPU386_SEG_ES :
+            (opcode == 0x0E ? A5VM_CPU386_SEG_CS :
+             (opcode == 0x16 ? A5VM_CPU386_SEG_SS : A5VM_CPU386_SEG_DS));
+        push_value(cpu, cpu->segs[segment], 0);
+        return cpu->status;
+    }
+    if (opcode == 0x07 || opcode == 0x17 || opcode == 0x1F) {
+        unsigned segment = opcode == 0x07 ? A5VM_CPU386_SEG_ES :
+            (opcode == 0x17 ? A5VM_CPU386_SEG_SS : A5VM_CPU386_SEG_DS);
+        if (!load_segment(cpu, segment, (uint16_t)pop_value(cpu, 0))) {
+            faultf(cpu, A5VM_CPU_FAULT, "invalid segment pop");
+        }
+        return cpu->status;
+    }
+    if (opcode >= 0x50 && opcode <= 0x57) {
+        push_value(cpu, cpu->regs[opcode - 0x50u], operand32);
+        return cpu->status;
+    }
+    if (opcode >= 0x58 && opcode <= 0x5F) {
+        unsigned reg = opcode - 0x58u;
+        cpu->regs[reg] = operand32 ? pop_value(cpu, 1) :
+            (cpu->regs[reg] & 0xFFFF0000u) | pop_value(cpu, 0);
+        return cpu->status;
+    }
+    if (opcode == 0x68 || opcode == 0x6A) {
+        uint32_t value = opcode == 0x68 ?
+            (operand32 ? fetch32(cpu) : fetch16(cpu)) : (uint32_t)(int8_t)fetch8(cpu);
+        push_value(cpu, value, operand32);
         return cpu->status;
     }
     if (opcode >= 0xB0 && opcode <= 0xB7) {
