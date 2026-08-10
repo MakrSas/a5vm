@@ -1,0 +1,37 @@
+name: A5VM CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  portable-core:
+    name: Portable core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build demo
+        run: |
+          mkdir -p build
+          cc -std=c11 -Wall -Wextra -Werror -I include \
+            src/memory.c src/cpu8086.c src/main.c \
+            -o build/a5vm-demo
+
+      - name: Build tests
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -I include \
+            src/memory.c src/cpu8086.c tests/test_a5vm.c \
+            -o build/a5vm-tests
+
+      - name: Run tests
+        run: ./build/a5vm-tests
+
+      - name: Run demo
+        run: ./build/a5vm-demo
