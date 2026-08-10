@@ -36,7 +36,9 @@ a5vm_cpu_status a5vm_machine_run386(a5vm_machine *machine,
 void a5vm_machine_tick(a5vm_machine *machine, uint32_t cycles);
 a5vm_cpu_status a5vm_machine_boot(a5vm_machine *machine,
                                    uint64_t max_steps);
+a5vm_cpu_status a5vm_machine_prepare_boot(a5vm_machine *machine);
 a5vm_cpu_status a5vm_machine_boot386(a5vm_machine *machine,
                                      uint64_t max_steps);
+a5vm_cpu_status a5vm_machine_prepare_boot386(a5vm_machine *machine);
 
 #endif

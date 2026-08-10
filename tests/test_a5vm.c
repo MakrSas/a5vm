@@ -220,6 +220,10 @@ static void test_floppy_and_boot(void) {
     CHECK(machine.vga.cells[2] == '5');
     CHECK(machine.vga.cells[4] == 'V');
     CHECK(machine.vga.cells[6] == 'M');
+    a5vm_machine_reset(&machine);
+    CHECK(a5vm_machine_prepare_boot(&machine) == A5VM_CPU_RUNNING);
+    CHECK(a5vm_machine_run(&machine, 1) == A5VM_CPU_RUNNING);
+    CHECK(a5vm_machine_run(&machine, 100) == A5VM_CPU_HALTED);
     a5vm_pic8259_set_mask(&machine.pic, 0, 1);
     a5vm_machine_tick(&machine, 65536);
     CHECK(machine.pit.ticks == 1);
@@ -328,7 +332,11 @@ static void test_floppy_and_boot(void) {
         i386_boot[5] = 0x10;
         i386_boot[6] = 0xF4;
         CHECK(a5vm_floppy_write_sector(&machine.floppy, 0, i386_boot));
-        status = a5vm_machine_boot386(&machine, 20);
+        status = a5vm_machine_prepare_boot386(&machine);
+        CHECK(status == A5VM_CPU_RUNNING);
+        status = a5vm_machine_run386(&machine, 1);
+        CHECK(status == A5VM_CPU_RUNNING);
+        status = a5vm_machine_run386(&machine, 20);
         CHECK(status == A5VM_CPU_HALTED);
         CHECK(machine.cpu386.regs[A5VM_CPU386_REG_EAX] == 0x0E33u);
         CHECK(machine.vga.cells[0] == '3');

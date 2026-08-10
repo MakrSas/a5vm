@@ -191,6 +191,7 @@
 - (void)powerVM:(id)sender {
     (void)sender;
     if (_poweredOn) {
+        [self stopRunner];
         if (_runtime) a5vm_machine_reset(_runtime);
         _poweredOn = NO;
         _keyboardVisible = NO;
@@ -208,12 +209,67 @@
 
 - (void)pauseVM:(id)sender {
     (void)sender;
-    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Pause"
-                                                     message:@"The current boot runner executes a bounded boot session. Background pause will be enabled with continuous execution."
-                                                    delegate:nil
-                                           cancelButtonTitle:@"OK"
-                                           otherButtonTitles:nil] autorelease];
-    [alert show];
+    if (!_isRunning) return;
+    if (_isPaused) {
+        _isPaused = NO;
+        [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+        _statusLabel.text = @"Running";
+        _runTimer = [NSTimer scheduledTimerWithTimeInterval:0.02
+                                                       target:self
+                                                     selector:@selector(runSlice:)
+                                                     userInfo:nil
+                                                      repeats:YES];
+    } else {
+        _isPaused = YES;
+        [_pauseButton setTitle:@"Resume" forState:UIControlStateNormal];
+        _statusLabel.text = @"Paused";
+        [_runTimer invalidate];
+        [_runTimer release];
+        _runTimer = nil;
+    }
+}
+
+- (void)stopRunner {
+    [_runTimer invalidate];
+    [_runTimer release];
+    _runTimer = nil;
+    _isRunning = NO;
+    _isPaused = NO;
+    [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+}
+
+- (void)finishRunWithStatus:(a5vm_cpu_status)status {
+    if (!_isRunning) return;
+    [self stopRunner];
+    [self writeLine:status == A5VM_CPU_HALTED ? @"Boot sector halted." : @"Boot failed."];
+    if (_is386) {
+        [self writeLine:[NSString stringWithFormat:@"EAX=%08X  EIP=%08X",
+                         _runtime->cpu386.regs[A5VM_CPU386_REG_EAX],
+                         _runtime->cpu386.eip]];
+    } else {
+        [self writeLine:[NSString stringWithFormat:@"AX=%04X  BX=%04X  IP=%04X",
+                         _runtime->cpu.regs[A5VM_REG_AX],
+                         _runtime->cpu.regs[A5VM_REG_BX],
+                         _runtime->cpu.ip]];
+    }
+    if (status != A5VM_CPU_HALTED) {
+        const char *fault = _is386 ? a5vm_cpu386_fault(&_runtime->cpu386) :
+            a5vm_cpu8086_fault(&_runtime->cpu);
+        [self writeLine:[NSString stringWithFormat:@"FAULT: %s", fault]];
+    }
+    a5vm_vga_text_write(&_runtime->vga, "A:\\>");
+    [self renderVGA];
+    _statusLabel.text = status == A5VM_CPU_HALTED ? @"Halted" : @"Fault";
+}
+
+- (void)runSlice:(NSTimer *)timer {
+    a5vm_cpu_status status;
+    (void)timer;
+    if (!_isRunning || _isPaused || !_runtime) return;
+    status = _is386 ? a5vm_machine_run386(_runtime, 250) :
+        a5vm_machine_run(_runtime, 250);
+    [self renderVGA];
+    if (status != A5VM_CPU_RUNNING) [self finishRunWithStatus:status];
 }
 
 - (NSString *)diskImagePath {
@@ -265,12 +321,21 @@
 - (void)runDemo:(id)sender {
     (void)sender;
     a5vm_cpu_status status;
-    BOOL is386;
     if (!_runtime || !_poweredOn) return;
-    is386 = [[[_machine objectForKey:@"architecture"]
-              lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
-    status = is386 ? a5vm_machine_boot386(_runtime, 1000) :
-        a5vm_machine_boot(_runtime, 1000);
+    if (_isRunning) {
+        if (_isPaused) [self pauseVM:nil];
+        return;
+    }
+    _is386 = [[[_machine objectForKey:@"architecture"]
+               lowercaseString] rangeOfString:@"i386"].location != NSNotFound;
+    status = _is386 ? a5vm_machine_prepare_boot386(_runtime) :
+        a5vm_machine_prepare_boot(_runtime);
+    if (status != A5VM_CPU_RUNNING) {
+        _isRunning = YES;
+        [self writeLine:@"Boot failed."];
+        [self finishRunWithStatus:status];
+        return;
+    }
     [self writeLine:@"A5VM BIOS 0.1"];
     [self writeLine:[NSString stringWithFormat:@"%@ / %@ / %@",
                      [_machine objectForKey:@"architecture"],
@@ -279,30 +344,23 @@
     [self writeLine:@"VGA TEXT 80x25  KEYBOARD READY"];
     [self writeLine:@" "];
     [self writeLine:@"Booting sector 0 from virtual floppy..."];
-    [self writeLine:status == A5VM_CPU_HALTED ? @"Boot sector halted." : @"Boot failed."];
-    if (is386) {
-        [self writeLine:[NSString stringWithFormat:@"EAX=%08X  EIP=%08X",
-                         _runtime->cpu386.regs[A5VM_CPU386_REG_EAX],
-                         _runtime->cpu386.eip]];
-    } else {
-        [self writeLine:[NSString stringWithFormat:@"AX=%04X  BX=%04X  IP=%04X",
-                         _runtime->cpu.regs[A5VM_REG_AX],
-                         _runtime->cpu.regs[A5VM_REG_BX],
-                         _runtime->cpu.ip]];
-    }
-    if (status != A5VM_CPU_HALTED) {
-        const char *fault = is386 ? a5vm_cpu386_fault(&_runtime->cpu386) :
-            a5vm_cpu8086_fault(&_runtime->cpu);
-        [self writeLine:[NSString stringWithFormat:@"FAULT: %s", fault]];
-    }
-    a5vm_vga_text_write(&_runtime->vga, "A:\\>");
     [self renderVGA];
-    _statusLabel.text = status == A5VM_CPU_HALTED ? @"Halted" : @"Fault";
+    _isRunning = YES;
+    _isPaused = NO;
+    [_pauseButton setTitle:@"Pause" forState:UIControlStateNormal];
+    _statusLabel.text = @"Running";
+    _runTimer = [NSTimer scheduledTimerWithTimeInterval:0.02
+                                                   target:self
+                                                 selector:@selector(runSlice:)
+                                                 userInfo:nil
+                                                  repeats:YES];
+    [self runSlice:_runTimer];
 }
 
 - (void)resetVM:(id)sender {
     (void)sender;
     if (!_runtime) return;
+    [self stopRunner];
     _poweredOn = YES;
     [_powerButton setTitle:@"Power" forState:UIControlStateNormal];
     a5vm_machine_reset(_runtime);
@@ -351,6 +409,7 @@
 }
 
 - (void)dealloc {
+    [self stopRunner];
     [self saveDiskImage];
     [_machine release];
     [_machineName release];
@@ -374,6 +433,7 @@
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    [self stopRunner];
     [[UIApplication sharedApplication] setStatusBarHidden:NO
                                              withAnimation:UIStatusBarAnimationNone];
     [self.navigationController setNavigationBarHidden:NO animated:animated];

@@ -98,6 +98,12 @@ a5vm_cpu_status a5vm_machine_run(a5vm_machine *machine,
 
 a5vm_cpu_status a5vm_machine_boot(a5vm_machine *machine,
                                    uint64_t max_steps) {
+    a5vm_cpu_status status = a5vm_machine_prepare_boot(machine);
+    if (status != A5VM_CPU_RUNNING) return status;
+    return a5vm_machine_run(machine, max_steps);
+}
+
+a5vm_cpu_status a5vm_machine_prepare_boot(a5vm_machine *machine) {
     uint8_t boot_sector[A5VM_FLOPPY_SECTOR_SIZE];
     if (!a5vm_floppy_read_sector(&machine->floppy, 0, boot_sector)) {
         machine->cpu.status = A5VM_CPU_FAULT;
@@ -112,7 +118,7 @@ a5vm_cpu_status a5vm_machine_boot(a5vm_machine *machine,
     machine->cpu.segs[A5VM_SEG_SS] = 0;
     machine->cpu.ip = A5VM_BOOT_ADDRESS;
     machine->cpu.regs[A5VM_REG_SP] = 0xFFFE;
-    return a5vm_machine_run(machine, max_steps);
+    return machine->cpu.status;
 }
 
 a5vm_cpu_status a5vm_machine_run386(a5vm_machine *machine,
@@ -122,6 +128,12 @@ a5vm_cpu_status a5vm_machine_run386(a5vm_machine *machine,
 
 a5vm_cpu_status a5vm_machine_boot386(a5vm_machine *machine,
                                       uint64_t max_steps) {
+    a5vm_cpu_status status = a5vm_machine_prepare_boot386(machine);
+    if (status != A5VM_CPU_RUNNING) return status;
+    return a5vm_machine_run386(machine, max_steps);
+}
+
+a5vm_cpu_status a5vm_machine_prepare_boot386(a5vm_machine *machine) {
     uint8_t boot_sector[A5VM_FLOPPY_SECTOR_SIZE];
     if (!a5vm_floppy_read_sector(&machine->floppy, 0, boot_sector)) {
         machine->cpu386.status = A5VM_CPU_FAULT;
@@ -138,5 +150,5 @@ a5vm_cpu_status a5vm_machine_boot386(a5vm_machine *machine,
     machine->cpu386.segs[A5VM_CPU386_SEG_ES] = 0;
     machine->cpu386.eip = A5VM_BOOT_ADDRESS;
     machine->cpu386.regs[A5VM_CPU386_REG_ESP] = 0xFFFE;
-    return a5vm_machine_run386(machine, max_steps);
+    return machine->cpu386.status;
 }

@@ -18,10 +18,14 @@
     UIButton *_menuButton;
     UIView *_controlPanel;
     UITextField *_inputField;
+    NSTimer *_runTimer;
     a5vm_machine *_runtime;
     BOOL _controlsVisible;
     BOOL _keyboardVisible;
     BOOL _poweredOn;
+    BOOL _isRunning;
+    BOOL _isPaused;
+    BOOL _is386;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine;
@@ -31,6 +35,7 @@
 - (void)toggleControls:(id)sender;
 - (void)showKeyboard:(id)sender;
 - (void)pauseVM:(id)sender;
+- (void)runSlice:(NSTimer *)timer;
 - (BOOL)textFieldShouldReturn:(UITextField *)textField;
 
 @end
