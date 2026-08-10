@@ -60,6 +60,7 @@ jobs:
           THEOS: ${{ runner.temp }}/theos
         run: |
           git clone --depth 1 https://github.com/theos/theos.git "$THEOS"
+          "$THEOS/bin/update-theos"
           mkdir -p "$THEOS/sdks"
           curl -L --fail --retry 3 \
             https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS9.3.sdk.tar.xz \
