@@ -84,6 +84,8 @@ jobs:
           test -n "$app"
           mkdir -p build/ios6-gui
           cp -R "$app" build/ios6-gui/A5VM.app
+          cp app/Info.plist build/ios6-gui/A5VM.app/Info.plist
+          rm -rf build/ios6-gui/A5VM.app/A5VM.dSYM
           ldid -S build/ios6-gui/A5VM.app/A5VM
           /usr/bin/zip -qry build/a5vm-ios6-gui.zip build/ios6-gui/A5VM.app
           file build/ios6-gui/A5VM.app/A5VM
