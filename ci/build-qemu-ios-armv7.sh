@@ -27,7 +27,7 @@ export CXXCPP="${CXXCPP:-$CC $IOS_CFLAGS -E -x c++ -nostdinc++}"
 export CFLAGS="$IOS_CFLAGS"
 export CXXFLAGS="$IOS_CFLAGS -nostdinc++"
 export LDFLAGS="$IOS_LDFLAGS"
-export CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096"
+export CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12"
 export PKG_CONFIG_LIBDIR="$DEPS_DIR/lib/pkgconfig:$DEPS_DIR/share/pkgconfig"
 export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
 export PKG_CONFIG_SYSROOT_DIR=""
@@ -77,6 +77,9 @@ build_autotools() {
 
 fetch "https://github.com/libffi/libffi/releases/download/v3.4.7/libffi-3.4.7.tar.gz" libffi-3.4.7.tar.gz
 unpack libffi-3.4.7.tar.gz libffi-3.4.7
+LIBFFI_ARM_SOURCE="$SRC_DIR/libffi-3.4.7/src/arm/sysv.S"
+perl -0pi -e 's/(ARM_FUNC_START\(ffi_call_VFP\)\n\s*UNWIND\(\.fnstart\)\n)\s*cfi_startproc/$1/' "$LIBFFI_ARM_SOURCE"
+perl -0pi -e 's/(ARM_FUNC_START\(ffi_call_SYSV\)\n)/$1\tcfi_startproc\n/' "$LIBFFI_ARM_SOURCE"
 build_autotools libffi-3.4.7 --disable-dependency-tracking
 
 fetch "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.42/pcre2-10.42.tar.gz" pcre2-10.42.tar.gz
