@@ -126,7 +126,9 @@ fi
 
 fetch "https://www.cairographics.org/releases/pixman-0.40.0.tar.gz" pixman-0.40.0.tar.gz
 unpack pixman-0.40.0.tar.gz pixman-0.40.0
+CFLAGS="$IOS_CFLAGS -Wno-incompatible-function-pointer-types"
 build_autotools pixman-0.40.0 --disable-dependency-tracking --disable-libpng
+CFLAGS="$IOS_CFLAGS"
 
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
