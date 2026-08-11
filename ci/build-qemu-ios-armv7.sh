@@ -196,11 +196,19 @@ CFLAGS="$IOS_CFLAGS"
 # QEMU's own sigaltstack coroutine backend is portable POSIX C with no
 # per-architecture assembly and is explicitly accepted by configure for
 # Darwin, so use that instead of trying to port libucontext's ARM asm.
+#
+# configure enables the (C++) AArch64 "libvixl" disassembler whenever the
+# host --cpu is any flavor of arm and a C++ compiler is present, regardless
+# of --target-list, since it can disassemble host TCG code on any ARM host.
+# CXXFLAGS must therefore keep the SDK's real C++ standard headers
+# reachable -- do not add -nostdinc++ here (it is fine for the plain-C
+# autotools deps above, since none of them compile any C++, but it breaks
+# libvixl's #include <cmath> and friends).
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 pushd "$BUILD_DIR" >/dev/null
 CFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
-CXXFLAGS="$QEMU_CFLAGS -nostdinc++ -I$DEPS_DIR/include" \
+CXXFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
 CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12" \
 LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
 "$QEMU_SOURCE/configure" \
