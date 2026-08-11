@@ -89,6 +89,9 @@ build_autotools pcre2-10.42 --disable-dependency-tracking \
 
 fetch "https://download.gnome.org/sources/glib/2.76/glib-2.76.6.tar.xz" glib-2.76.6.tar.xz
 unpack glib-2.76.6.tar.xz glib-2.76.6
+GLIB_GSPAWN_SOURCE="$SRC_DIR/glib-2.76.6/glib/gspawn.c"
+perl -0pi -e 's/#ifdef __APPLE__\n#include <libproc\.h>\n#include <sys\/proc_info\.h>\n#endif/#if defined(__APPLE__) \&\& !defined(A5VM_IOS_BUILD)\n#include <libproc.h>\n#include <sys\/proc_info.h>\n#endif/' "$GLIB_GSPAWN_SOURCE"
+perl -0pi -e 's/#if defined\(__APPLE__\)\n  \/\* proc_pidinfo/#if defined(__APPLE__) \&\& !defined(A5VM_IOS_BUILD)\n  \/\* proc_pidinfo/' "$GLIB_GSPAWN_SOURCE"
 if [ ! -f "$SRC_DIR/glib-2.76.6/.a5vm-built" ]; then
     cat > "$WORK_DIR/ios-armv7-cross.ini" <<EOF
 [binaries]
@@ -100,7 +103,7 @@ strip = '$STRIP'
 pkgconfig = '$(command -v pkg-config)'
 
 [built-in options]
-c_args = ['-target', 'armv7-apple-ios$IOS_MIN_VERSION', '-arch', 'armv7', '-isysroot', '$SDKROOT', '-miphoneos-version-min=$IOS_MIN_VERSION', '-fPIC', '-I$DEPS_DIR/include']
+c_args = ['-target', 'armv7-apple-ios$IOS_MIN_VERSION', '-arch', 'armv7', '-isysroot', '$SDKROOT', '-miphoneos-version-min=$IOS_MIN_VERSION', '-fPIC', '-I$DEPS_DIR/include', '-DA5VM_IOS_BUILD']
 c_link_args = ['-target', 'armv7-apple-ios$IOS_MIN_VERSION', '-arch', 'armv7', '-isysroot', '$SDKROOT', '-miphoneos-version-min=$IOS_MIN_VERSION', '-L$DEPS_DIR/lib']
 
 [host_machine]
