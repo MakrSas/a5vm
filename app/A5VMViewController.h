@@ -29,6 +29,7 @@
     BOOL _isRunning;
     BOOL _isPaused;
     BOOL _is386;
+    BOOL _hasSeparateHardDisk;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine;

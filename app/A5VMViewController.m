@@ -77,6 +77,7 @@
             _runtime = NULL;
         } else {
             [self loadDiskImage];
+            [self loadHardDiskImage];
         }
     }
     return self;
@@ -380,11 +381,30 @@
     }
 }
 
+- (void)loadHardDiskImage {
+    NSString *diskPath = [self diskImagePath];
+    NSString *bootPath = [self bootImagePath];
+    if ([diskPath isEqualToString:bootPath]) return;
+    _hasSeparateHardDisk = YES;
+
+    NSData *image = [NSData dataWithContentsOfFile:diskPath];
+    if (image && [image length] <= _runtime->disk.size) {
+        memcpy(_runtime->disk.bytes, [image bytes], [image length]);
+    }
+}
+
 - (void)saveDiskImage {
     if (!_runtime || !_runtime->floppy.bytes) return;
     NSData *image = [NSData dataWithBytes:_runtime->floppy.bytes
                                    length:_runtime->floppy.size];
     [image writeToFile:[self bootImagePath] atomically:YES];
+}
+
+- (void)saveHardDiskImage {
+    if (!_hasSeparateHardDisk || !_runtime || !_runtime->disk.bytes) return;
+    NSData *image = [NSData dataWithBytes:_runtime->disk.bytes
+                                   length:_runtime->disk.size];
+    [image writeToFile:[self diskImagePath] atomically:YES];
 }
 
 - (void)renderVGA {
@@ -491,6 +511,7 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self stopRunner];
     [self saveDiskImage];
+    [self saveHardDiskImage];
     [_machine release];
     [_machineName release];
     [_screenTitle release];
@@ -515,6 +536,8 @@
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self stopRunner];
+    [self saveDiskImage];
+    [self saveHardDiskImage];
     [[UIApplication sharedApplication] setStatusBarHidden:NO
                                              withAnimation:UIStatusBarAnimationNone];
     [self.navigationController setNavigationBarHidden:NO animated:animated];
