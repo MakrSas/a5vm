@@ -54,6 +54,14 @@ QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysro
 QEMU_CFLAGS="$QEMU_CFLAGS -include $SCRIPT_DIR/qemu-ios-clock-compat.h"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
+# libc++'s headers live under the *toolchain* (Xcode_26.6.app/.../usr/include/c++/v1),
+# not under any particular target SDK, but clang's automatic libc++ header
+# search apparently does not kick in for this ancient, non-Xcode-bundled
+# iPhoneOS6.1 sysroot -- QEMU's disas/libvixl (a real C++ component, pulled
+# in by any ARM host --cpu regardless of --target-list) fails to find
+# <cmath> otherwise.  Point at the toolchain's own copy explicitly.
+CXX_TOOLCHAIN_USR="$(dirname "$(dirname "$CC")")"
+QEMU_CXXFLAGS_EXTRA="-stdlib=libc++ -isystem $CXX_TOOLCHAIN_USR/include/c++/v1"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
 export RANLIB="${RANLIB:-$(xcrun --sdk iphoneos --find ranlib)}"
 export STRIP="${STRIP:-$(xcrun --sdk iphoneos --find strip)}"
@@ -200,15 +208,21 @@ CFLAGS="$IOS_CFLAGS"
 # configure enables the (C++) AArch64 "libvixl" disassembler whenever the
 # host --cpu is any flavor of arm and a C++ compiler is present, regardless
 # of --target-list, since it can disassemble host TCG code on any ARM host.
-# CXXFLAGS must therefore keep the SDK's real C++ standard headers
-# reachable -- do not add -nostdinc++ here (it is fine for the plain-C
-# autotools deps above, since none of them compile any C++, but it breaks
-# libvixl's #include <cmath> and friends).
+# It needs real C++ standard headers, so do not add -nostdinc++ to its
+# flags (fine for the plain-C autotools deps above, since none of them
+# compile any C++). That alone was not enough, though: clang's automatic
+# libc++ header search does not kick in for this non-Xcode-bundled
+# iPhoneOS6.1 sysroot, so -stdlib=libc++ plus an explicit -isystem into
+# the toolchain's own libc++ (QEMU_CXXFLAGS_EXTRA, set above once CC is
+# known) is required. It is passed only via --extra-cxxflags, which
+# configure keeps separate from --extra-cflags/QEMU_CFLAGS -- the C-only
+# probes (like the __thread check) must not see -stdlib=libc++, an
+# argument clang rejects for C with configure's probe-local -Werror.
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 pushd "$BUILD_DIR" >/dev/null
 CFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
-CXXFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
+CXXFLAGS="$QEMU_CFLAGS $QEMU_CXXFLAGS_EXTRA -I$DEPS_DIR/include" \
 CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12" \
 LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
 "$QEMU_SOURCE/configure" \
@@ -230,6 +244,7 @@ LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
     --disable-attr --disable-xfsctl --disable-mpath --disable-libpmem \
       --disable-pie --disable-malloc-trim --with-coroutine=sigaltstack \
       --extra-cflags="$QEMU_CFLAGS -I$DEPS_DIR/include" \
+      --extra-cxxflags="$QEMU_CXXFLAGS_EXTRA" \
       --extra-ldflags="$QEMU_LDFLAGS -L$DEPS_DIR/lib"
 make -j2 i386-softmmu/all
 popd >/dev/null
