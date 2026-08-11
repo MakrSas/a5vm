@@ -113,13 +113,13 @@ cpu = 'armv7'
 endian = 'little'
 EOF
     pushd "$SRC_DIR/glib-2.76.6" >/dev/null
-    meson setup build --cross-file "$WORK_DIR/ios-armv7-cross.ini" \
+    python3 -m mesonbuild.mesonmain setup build --cross-file "$WORK_DIR/ios-armv7-cross.ini" \
         --prefix="$DEPS_DIR" -Dtests=false -Dinstalled_tests=false \
         -Dglib_assert=false -Dglib_checks=false -Dman=false \
         -Dgtk_doc=false -Ddtrace=false -Dsystemtap=false \
         -Dlibmount=disabled -Dselinux=disabled -Dxattr=false
-    meson compile -C build
-    meson install -C build
+    python3 -m mesonbuild.mesonmain compile -C build
+    python3 -m mesonbuild.mesonmain install -C build
     touch .a5vm-built
     popd >/dev/null
 fi

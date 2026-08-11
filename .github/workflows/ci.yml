@@ -184,6 +184,7 @@ jobs:
         run: |
           export PATH="$(brew --prefix python@3.11)/libexec/bin:$(brew --prefix python@3.11)/bin:$PATH"
           python3 --version
+          python3 -m pip install --user meson==1.5.2
           chmod +x ci/build-qemu-ios-armv7.sh
           mkdir -p build/qemu-ios-armv7
           SDKROOT="$A5VM_IOS_SDK" \
