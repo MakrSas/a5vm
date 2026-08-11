@@ -178,6 +178,18 @@ CFLAGS="$IOS_CFLAGS -Wno-incompatible-function-pointer-types"
 build_autotools_install_only pixman-0.40.0 --disable-dependency-tracking --disable-libpng
 CFLAGS="$IOS_CFLAGS"
 
+# configure defaults an iOS host to the "libucontext" coroutine backend
+# (native Darwin ucontext is skipped entirely for the whole Darwin family
+# by configure's own probe, and --with-coroutine=ucontext hard-errors
+# there). The libucontext submodule this fork vendors, though, is a
+# Linux/glibc-kernel-ABI reimplementation (github.com/utmapp/libucontext,
+# part of the gcompat project) with no Darwin code path anywhere in its
+# tree: its arch/arm/makecontext.c hard-codes Linux sigcontext field names
+# (uc_mcontext.arm_lr, .arm_r0, ...) that do not exist in Darwin's
+# mcontext_t, and relies on a GNU alias() attribute Mach-O cannot link.
+# QEMU's own sigaltstack coroutine backend is portable POSIX C with no
+# per-architecture assembly and is explicitly accepted by configure for
+# Darwin, so use that instead of trying to port libucontext's ARM asm.
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 pushd "$BUILD_DIR" >/dev/null
@@ -202,7 +214,7 @@ LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
     --disable-libiscsi --disable-pvrdma --disable-usb-redir \
     --disable-libusb --disable-smartcard --disable-tpm --disable-libxml2 \
     --disable-attr --disable-xfsctl --disable-mpath --disable-libpmem \
-      --disable-pie --disable-malloc-trim --with-coroutine=libucontext \
+      --disable-pie --disable-malloc-trim --with-coroutine=sigaltstack \
       --extra-cflags="$QEMU_CFLAGS -I$DEPS_DIR/include" \
       --extra-ldflags="$QEMU_LDFLAGS -L$DEPS_DIR/lib"
 make -j2 i386-softmmu/all
