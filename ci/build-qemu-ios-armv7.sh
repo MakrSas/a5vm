@@ -4,6 +4,7 @@ set -euo pipefail
 # Build the smallest useful UTM/QEMU system-emulation library for iPhone 4S.
 # The app keeps its portable backend until this library is wired to UIKit.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDKROOT=${SDKROOT:?SDKROOT must point at iPhoneOS6.1.sdk}
 QEMU_SOURCE=${QEMU_SOURCE:?QEMU_SOURCE must point at third_party/qemu}
 OUT_DIR=${OUT_DIR:?OUT_DIR must be an output directory}
@@ -46,6 +47,11 @@ IOS_LDFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SD
 # target the probe actually compiles against.
 QEMU_CFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${QEMU_TLS_MIN_VERSION} -fPIC -femulated-tls"
 QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${QEMU_TLS_MIN_VERSION}"
+# The iPhoneOS6.1 SDK predates clock_gettime()/CLOCK_MONOTONIC on Apple
+# platforms; force-include a small compat shim ahead of every QEMU
+# translation unit instead of patching the vendored QEMU source (see
+# qemu-ios-clock-compat.h for why).
+QEMU_CFLAGS="$QEMU_CFLAGS -include $SCRIPT_DIR/qemu-ios-clock-compat.h"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
