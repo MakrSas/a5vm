@@ -8,10 +8,11 @@
                          atIndex:(NSUInteger)index;
 @end
 
-@interface A5VMMachineSettingsViewController : UITableViewController <UIAlertViewDelegate> {
+@interface A5VMMachineSettingsViewController : UITableViewController <UIActionSheetDelegate, UIAlertViewDelegate> {
     NSDictionary *_machine;
     NSUInteger _machineIndex;
     id <A5VMMachineSettingsDelegate> _delegate;
+    NSArray *_mediaChoices;
 }
 
 - (id)initWithMachine:(NSDictionary *)machine

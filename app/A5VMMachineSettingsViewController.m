@@ -2,6 +2,9 @@
 #import "A5VMViewController.h"
 #import "A5VMDiskImageViewController.h"
 
+static NSInteger const A5VMSettingsMediaActionSheetTag = 1101;
+static NSInteger const A5VMSettingsMediaAlertTag = 1102;
+
 @implementation A5VMMachineSettingsViewController
 
 - (id)initWithMachine:(NSDictionary *)machine
@@ -155,11 +158,135 @@
         A5VMDiskImageViewController *disk =
             [[[A5VMDiskImageViewController alloc] initWithDiskPath:path] autorelease];
         [self.navigationController pushViewController:disk animated:YES];
+    } else if (indexPath.section == 2 && indexPath.row == 1) {
+        [self chooseMedia:nil];
+    }
+}
+
+- (void)chooseMedia:(id)sender {
+    (void)sender;
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    NSString *documents = [directories objectAtIndex:0];
+    NSArray *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:documents
+                                                                            error:nil];
+    NSMutableArray *choices = [NSMutableArray array];
+    for (NSString *name in names) {
+        BOOL isDirectory = NO;
+        NSString *path = [documents stringByAppendingPathComponent:name];
+        NSString *extension = [[name pathExtension] lowercaseString];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDirectory] ||
+            isDirectory || ![extension length]) continue;
+        if ([extension isEqualToString:@"img"] || [extension isEqualToString:@"ima"] ||
+            [extension isEqualToString:@"dsk"] || [extension isEqualToString:@"iso"] ||
+            [extension isEqualToString:@"rom"]) {
+            [choices addObject:name];
+        }
+    }
+    [choices sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+    [_mediaChoices release];
+    _mediaChoices = [choices copy];
+
+    UIActionSheet *sheet = [[[UIActionSheet alloc] initWithTitle:@"Installation Media"
+                                                          delegate:self
+                                                 cancelButtonTitle:@"Cancel"
+                                            destructiveButtonTitle:nil
+                                                 otherButtonTitles:@"Enter path", nil] autorelease];
+    for (NSString *name in _mediaChoices) [sheet addButtonWithTitle:name];
+    sheet.tag = A5VMSettingsMediaActionSheetTag;
+    [sheet showInView:self.view];
+}
+
+- (void)enterMediaPath {
+    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Installation media path"
+                                                     message:@"Enter a full path to an IMG, ISO, ROM, or disk image."
+                                                    delegate:self
+                                           cancelButtonTitle:@"Cancel"
+                                           otherButtonTitles:@"Use", nil] autorelease];
+    alert.tag = A5VMSettingsMediaAlertTag;
+    alert.alertViewStyle = UIAlertViewStylePlainTextInput;
+    [alert textFieldAtIndex:0].text = [_machine objectForKey:@"mediaPath"];
+    [alert textFieldAtIndex:0].autocorrectionType = UITextAutocorrectionTypeNo;
+    [alert textFieldAtIndex:0].autocapitalizationType = UITextAutocapitalizationTypeNone;
+    [alert show];
+}
+
+- (void)updateMediaPath:(NSString *)path {
+    if ([path length] == 0) return;
+    NSMutableDictionary *updated = [NSMutableDictionary dictionaryWithDictionary:_machine];
+    [updated setObject:path forKey:@"mediaPath"];
+    NSString *extension = [[path pathExtension] lowercaseString];
+    BOOL floppyImage = [extension isEqualToString:@"img"] ||
+        [extension isEqualToString:@"ima"] || [extension isEqualToString:@"dsk"];
+    if ([[updated objectForKey:@"osFamily"] isEqualToString:@"DOS"] && floppyImage) {
+        [updated setObject:path forKey:@"diskImage"];
+    }
+    [_machine release];
+    _machine = [updated copy];
+    [_delegate machineSettingsController:self didUpdateMachine:_machine atIndex:_machineIndex];
+    [self.tableView reloadData];
+}
+
+- (void)actionSheet:(UIActionSheet *)actionSheet
+ clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (actionSheet.tag != A5VMSettingsMediaActionSheetTag ||
+        buttonIndex == actionSheet.cancelButtonIndex) return;
+    if (buttonIndex == 0) {
+        [self enterMediaPath];
+        return;
+    }
+    NSUInteger choiceIndex = (NSUInteger)(buttonIndex - 1);
+    if (choiceIndex < [_mediaChoices count]) {
+        [self updateMediaPath:[_mediaChoices objectAtIndex:choiceIndex]];
     }
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
     if (buttonIndex == alertView.cancelButtonIndex) return;
+    if (alertView.tag == A5VMSettingsMediaAlertTag) {
+        NSString *sourcePath = [[alertView textFieldAtIndex:0].text
+                                stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                    NSUserDomainMask, YES);
+        NSString *documents = [directories objectAtIndex:0];
+        NSString *resolvedPath = [sourcePath hasPrefix:@"/"]
+            ? sourcePath : [documents stringByAppendingPathComponent:sourcePath];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:resolvedPath]) {
+            UIAlertView *missing = [[[UIAlertView alloc] initWithTitle:@"Media file not found"
+                                                                message:@"Select a file in A5VM Documents or enter a valid full path."
+                                                               delegate:nil
+                                                      cancelButtonTitle:@"OK"
+                                                      otherButtonTitles:nil] autorelease];
+            [missing show];
+            return;
+        }
+        NSString *filename = [resolvedPath lastPathComponent];
+        NSString *destination = [documents stringByAppendingPathComponent:filename];
+        if (![resolvedPath isEqualToString:destination]) {
+            NSString *extension = [[filename pathExtension] lowercaseString];
+            NSUInteger suffix = 1;
+            while ([[NSFileManager defaultManager] fileExistsAtPath:destination]) {
+                filename = [NSString stringWithFormat:@"media-%lu.%@",
+                            (unsigned long)suffix++, [extension length] == 0 ? @"img" : extension];
+                destination = [documents stringByAppendingPathComponent:filename];
+            }
+            NSError *error = nil;
+            if (![[NSFileManager defaultManager] copyItemAtPath:resolvedPath
+                                                           toPath:destination
+                                                            error:&error]) {
+                UIAlertView *failed = [[[UIAlertView alloc] initWithTitle:@"Could not import media"
+                                                                   message:[error localizedDescription]
+                                                                  delegate:nil
+                                                         cancelButtonTitle:@"OK"
+                                                         otherButtonTitles:nil] autorelease];
+                [failed show];
+                return;
+            }
+        }
+        [self updateMediaPath:filename];
+        return;
+    }
     NSString *name = [[alertView textFieldAtIndex:0].text
                       stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     if ([name length] == 0) return;
@@ -239,6 +366,7 @@
 }
 
 - (void)dealloc {
+    [_mediaChoices release];
     [_machine release];
     [super dealloc];
 }
