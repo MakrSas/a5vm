@@ -4,8 +4,53 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 @implementation A5VMViewController
+
+- (void)addSpecialKeyButtonWithTitle:(NSString *)title tag:(NSInteger)tag {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+    button.tag = tag;
+    button.backgroundColor = [UIColor colorWithWhite:0.18f alpha:0.96f];
+    button.opaque = YES;
+    button.titleLabel.font = [UIFont boldSystemFontOfSize:13.0f];
+    [button setTitle:title forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    [button setTitleColor:[UIColor colorWithWhite:0.65f alpha:1.0f]
+                  forState:UIControlStateHighlighted];
+    button.accessibilityLabel = title;
+    [button addTarget:self action:@selector(sendSpecialKey:)
+     forControlEvents:UIControlEventTouchUpInside];
+    [_keyPanel addSubview:button];
+}
+
+- (void)queueKeyboardByte:(uint8_t)value {
+    if (_runtime) (void)a5vm_keyboard_push(&_runtime->keyboard, value);
+}
+
+- (void)sendSpecialKey:(UIButton *)sender {
+    NSInteger tag = sender.tag;
+    if (tag >= 0x100) {
+        [self queueKeyboardByte:0x00];
+        [self queueKeyboardByte:(uint8_t)(tag - 0x100)];
+    } else {
+        [self queueKeyboardByte:(uint8_t)tag];
+    }
+    _statusLabel.text = [NSString stringWithFormat:@"Key queued (%u)",
+                         _runtime ? _runtime->keyboard.count : 0u];
+}
+
+- (void)keyboardFrameChanged:(NSNotification *)notification {
+    CGRect frame = [[[notification userInfo]
+                     objectForKey:UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect localFrame = [self.view convertRect:frame fromView:nil];
+    if (!_keyboardVisible || CGRectGetMinY(localFrame) >= CGRectGetHeight(self.view.bounds)) {
+        _keyboardTop = 0.0f;
+    } else {
+        _keyboardTop = CGRectGetMinY(localFrame);
+    }
+    [self layoutOverlayControls];
+}
 
 - (id)init {
     return [self initWithMachine:nil];
@@ -134,6 +179,23 @@
     _inputField.hidden = YES;
     [self.view addSubview:_inputField];
 
+    _keyPanel = [[UIView alloc] initWithFrame:CGRectZero];
+    _keyPanel.backgroundColor = [UIColor colorWithWhite:0.04f alpha:0.94f];
+    _keyPanel.hidden = YES;
+    [self.view addSubview:_keyPanel];
+    [self addSpecialKeyButtonWithTitle:@"Esc" tag:0x1B];
+    [self addSpecialKeyButtonWithTitle:@"Tab" tag:0x09];
+    [self addSpecialKeyButtonWithTitle:@"←" tag:0x100 + 0x4B];
+    [self addSpecialKeyButtonWithTitle:@"↑" tag:0x100 + 0x48];
+    [self addSpecialKeyButtonWithTitle:@"↓" tag:0x100 + 0x50];
+    [self addSpecialKeyButtonWithTitle:@"→" tag:0x100 + 0x4D];
+    [self addSpecialKeyButtonWithTitle:@"⌫" tag:0x08];
+    [self addSpecialKeyButtonWithTitle:@"Enter" tag:0x0D];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(keyboardFrameChanged:)
+                                                 name:UIKeyboardWillChangeFrameNotification
+                                               object:nil];
+
     _controlsVisible = YES;
     _keyboardVisible = NO;
     _poweredOn = YES;
@@ -150,6 +212,7 @@
 
 - (void)layoutOverlayControls {
     CGRect bounds = self.view.bounds;
+    CGFloat keyboardTop = _keyboardTop > 0.0f ? _keyboardTop : bounds.size.height;
     _controlPanel.frame = CGRectMake(6.0f, 6.0f, bounds.size.width - 56.0f, 48.0f);
     _menuButton.frame = CGRectMake(bounds.size.width - 46.0f, 6.0f, 40.0f, 40.0f);
     _screenTitle.frame = CGRectMake(8.0f, 3.0f, 116.0f, 24.0f);
@@ -160,7 +223,15 @@
     _powerButton.frame = CGRectMake(92.0f, 4.0f, 40.0f, 40.0f);
     _pauseButton.frame = CGRectMake(136.0f, 4.0f, 40.0f, 40.0f);
     _keyboardButton.frame = CGRectMake(180.0f, 4.0f, 40.0f, 40.0f);
-    _inputField.frame = CGRectMake(8.0f, bounds.size.height - 42.0f,
+    _keyPanel.frame = CGRectMake(6.0f, keyboardTop - 42.0f,
+                                 bounds.size.width - 12.0f, 36.0f);
+    CGFloat keyWidth = floorf((_keyPanel.bounds.size.width - 27.0f) / 8.0f);
+    for (NSUInteger index = 0; index < [_keyPanel.subviews count]; ++index) {
+        UIView *key = [_keyPanel.subviews objectAtIndex:index];
+        key.frame = CGRectMake(3.0f + index * (keyWidth + 3.0f),
+                               1.0f, keyWidth, 34.0f);
+    }
+    _inputField.frame = CGRectMake(8.0f, keyboardTop - 80.0f,
                                    bounds.size.width - 16.0f, 34.0f);
 }
 
@@ -187,6 +258,9 @@
     (void)sender;
     _keyboardVisible = !_keyboardVisible;
     _inputField.hidden = !_keyboardVisible;
+    _keyPanel.hidden = !_keyboardVisible;
+    if (!_keyboardVisible) _keyboardTop = 0.0f;
+    [self layoutOverlayControls];
     _keyboardButton.accessibilityValue = _keyboardVisible ? @"Keyboard visible" : @"Keyboard hidden";
     if (_keyboardVisible) [_inputField becomeFirstResponder];
     else [_inputField resignFirstResponder];
@@ -386,6 +460,7 @@
         }
         bytes++;
     }
+    [self queueKeyboardByte:0x0D];
     a5vm_vga_text_putc(&_runtime->vga, '\n');
     a5vm_vga_text_write(&_runtime->vga, "A:\\>");
     [self renderVGA];
@@ -413,6 +488,7 @@
 }
 
 - (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self stopRunner];
     [self saveDiskImage];
     [_machine release];
@@ -427,6 +503,7 @@
     [_keyboardButton release];
     [_menuButton release];
     [_controlPanel release];
+    [_keyPanel release];
     [_inputField release];
     if (_runtime) {
         a5vm_machine_deinit(_runtime);

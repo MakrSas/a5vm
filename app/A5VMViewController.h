@@ -18,7 +18,9 @@
     A5VMIconButton *_keyboardButton;
     A5VMIconButton *_menuButton;
     UIView *_controlPanel;
+    UIView *_keyPanel;
     UITextField *_inputField;
+    CGFloat _keyboardTop;
     NSTimer *_runTimer;
     a5vm_machine *_runtime;
     BOOL _controlsVisible;
