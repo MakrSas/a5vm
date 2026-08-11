@@ -75,6 +75,20 @@ build_autotools() {
     popd >/dev/null
 }
 
+build_autotools_install_only() {
+    local directory="$1"
+    shift
+    if [ -f "$SRC_DIR/$directory/.a5vm-built" ]; then
+        return
+    fi
+    pushd "$SRC_DIR/$directory" >/dev/null
+    ./configure --host=arm-apple-darwin --prefix="$DEPS_DIR" \
+        --disable-shared --enable-static "$@"
+    make -j2 install
+    touch .a5vm-built
+    popd >/dev/null
+}
+
 fetch "https://github.com/libffi/libffi/releases/download/v3.4.7/libffi-3.4.7.tar.gz" libffi-3.4.7.tar.gz
 unpack libffi-3.4.7.tar.gz libffi-3.4.7
 LIBFFI_ARM_SOURCE="$SRC_DIR/libffi-3.4.7/src/arm/sysv.S"
@@ -127,7 +141,7 @@ fi
 fetch "https://www.cairographics.org/releases/pixman-0.40.0.tar.gz" pixman-0.40.0.tar.gz
 unpack pixman-0.40.0.tar.gz pixman-0.40.0
 CFLAGS="$IOS_CFLAGS -Wno-incompatible-function-pointer-types"
-build_autotools pixman-0.40.0 --disable-dependency-tracking --disable-libpng
+build_autotools_install_only pixman-0.40.0 --disable-dependency-tracking --disable-libpng
 CFLAGS="$IOS_CFLAGS"
 
 rm -rf "$BUILD_DIR"
