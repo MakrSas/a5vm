@@ -75,9 +75,9 @@ build_autotools() {
     popd >/dev/null
 }
 
-fetch "https://github.com/libffi/libffi/releases/download/v3.4.4/libffi-3.4.4.tar.gz" libffi-3.4.4.tar.gz
-unpack libffi-3.4.4.tar.gz libffi-3.4.4
-build_autotools libffi-3.4.4 --disable-dependency-tracking
+fetch "https://github.com/libffi/libffi/releases/download/v3.4.7/libffi-3.4.7.tar.gz" libffi-3.4.7.tar.gz
+unpack libffi-3.4.7.tar.gz libffi-3.4.7
+build_autotools libffi-3.4.7 --disable-dependency-tracking
 
 fetch "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.42/pcre2-10.42.tar.gz" pcre2-10.42.tar.gz
 unpack pcre2-10.42.tar.gz pcre2-10.42
