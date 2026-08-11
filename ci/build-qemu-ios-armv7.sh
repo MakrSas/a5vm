@@ -19,6 +19,11 @@ mkdir -p "$DEPS_DIR" "$SRC_DIR" "$OUT_DIR"
 # per-thread CPU/runtime state available on this deployment target.
 IOS_CFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION} -fPIC -femulated-tls"
 IOS_LDFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION}"
+# Apple clang rejects TLS variables when the source target is an iOS
+# triple.  QEMU's objects do not use iOS-only APIs, so compile the QEMU
+# sources for the ARMv7 Darwin ABI while retaining the iPhoneOS SDK and
+# deployment target for the final link.
+QEMU_CFLAGS="-target armv7-apple-darwin -arch armv7 -isysroot $SDKROOT -fPIC -femulated-tls"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
@@ -154,6 +159,10 @@ CFLAGS="$IOS_CFLAGS"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 pushd "$BUILD_DIR" >/dev/null
+CFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
+CXXFLAGS="$QEMU_CFLAGS -nostdinc++ -I$DEPS_DIR/include" \
+CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12" \
+LDFLAGS="$IOS_LDFLAGS -L$DEPS_DIR/lib" \
 "$QEMU_SOURCE/configure" \
     --cc="$CC" --host-cc="$(command -v clang)" --cpu=arm \
     --target-list=i386-softmmu --enable-shared-lib --disable-werror \
@@ -171,7 +180,7 @@ pushd "$BUILD_DIR" >/dev/null
     --disable-libusb --disable-smartcard --disable-tpm --disable-libxml2 \
     --disable-attr --disable-xfsctl --disable-mpath --disable-libpmem \
       --disable-pie --disable-malloc-trim --with-coroutine=libucontext \
-      --extra-cflags="$IOS_CFLAGS -I$DEPS_DIR/include" \
+      --extra-cflags="$QEMU_CFLAGS -I$DEPS_DIR/include" \
       --extra-ldflags="$IOS_LDFLAGS -L$DEPS_DIR/lib"
 make -j2 i386-softmmu/all
 popd >/dev/null
