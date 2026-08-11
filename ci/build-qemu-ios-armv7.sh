@@ -15,7 +15,9 @@ IOS_MIN_VERSION=${IOS_MIN_VERSION:-6.0}
 
 mkdir -p "$DEPS_DIR" "$SRC_DIR" "$OUT_DIR"
 
-IOS_CFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION} -fPIC"
+# iOS 6 on ARMv7 has no native ELF TLS.  Clang's emulated TLS keeps QEMU's
+# per-thread CPU/runtime state available on this deployment target.
+IOS_CFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION} -fPIC -femulated-tls"
 IOS_LDFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION}"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
