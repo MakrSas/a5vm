@@ -32,6 +32,18 @@ export PKG_CONFIG_LIBDIR="$DEPS_DIR/lib/pkgconfig:$DEPS_DIR/share/pkgconfig"
 export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"
 export PKG_CONFIG_SYSROOT_DIR=""
 
+dump_config_on_failure() {
+    local status=$?
+    if [ "$status" -ne 0 ]; then
+        while IFS= read -r log; do
+            echo "===== $log ====="
+            tail -n 80 "$log"
+        done < <(find "$WORK_DIR" -name config.log -type f -print)
+    fi
+    exit "$status"
+}
+trap dump_config_on_failure EXIT
+
 fetch() {
     local url="$1"
     local archive="$2"
