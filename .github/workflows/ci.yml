@@ -182,6 +182,8 @@ jobs:
 
       - name: Build QEMU shared library for iOS 6 ARMv7
         run: |
+          export PATH="$(brew --prefix python@3.11)/libexec/bin:$(brew --prefix python@3.11)/bin:$PATH"
+          python3 --version
           chmod +x ci/build-qemu-ios-armv7.sh
           mkdir -p build/qemu-ios-armv7
           SDKROOT="$A5VM_IOS_SDK" \
