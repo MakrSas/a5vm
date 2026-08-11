@@ -113,7 +113,7 @@ EOF
     meson setup build --cross-file "$WORK_DIR/ios-armv7-cross.ini" \
         --prefix="$DEPS_DIR" -Dtests=false -Dinstalled_tests=false \
         -Dglib_assert=false -Dglib_checks=false -Dman=false \
-        -Dgtk_doc=false -Ddtrace=disabled -Dsystemtap=disabled \
+        -Dgtk_doc=false -Ddtrace=false -Dsystemtap=false \
         -Dlibmount=disabled -Dselinux=disabled -Dxattr=false
     meson compile -C build
     meson install -C build
