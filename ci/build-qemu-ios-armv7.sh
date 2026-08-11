@@ -187,11 +187,12 @@ CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12" \
 LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
 "$QEMU_SOURCE/configure" \
     --cc="$CC" --host-cc="$(command -v clang)" --cpu=arm \
+    --audio-drv-list= \
     --target-list=i386-softmmu --enable-shared-lib --disable-werror \
     --disable-docs --disable-guest-agent --disable-tools \
     --disable-modules --disable-plugins --disable-cocoa --disable-sdl \
     --disable-gtk --disable-curses --disable-vnc --disable-spice \
-    --disable-opengl --audio-drv-list=none --disable-virtfs \
+    --disable-opengl --disable-virtfs \
     --disable-slirp --disable-fdt --disable-capstone --disable-curl \
     --disable-gnutls --disable-nettle --disable-gcrypt --disable-libssh \
     --disable-lzo --disable-snappy --disable-zstd --disable-bzip2 \
