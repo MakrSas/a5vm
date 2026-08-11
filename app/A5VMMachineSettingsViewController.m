@@ -175,6 +175,55 @@
 
 - (void)runMachine:(id)sender {
     (void)sender;
+    NSString *family = [[_machine objectForKey:@"osFamily"] lowercaseString];
+    NSString *mediaPath = [_machine objectForKey:@"mediaPath"];
+    NSString *extension = [[mediaPath pathExtension] lowercaseString];
+    BOOL floppyImage = [extension isEqualToString:@"img"] ||
+        [extension isEqualToString:@"ima"] || [extension isEqualToString:@"dsk"];
+    if ([mediaPath length] != 0) {
+        NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                    NSUserDomainMask, YES);
+        NSString *resolvedPath = [mediaPath hasPrefix:@"/"]
+            ? mediaPath
+            : [[directories objectAtIndex:0] stringByAppendingPathComponent:mediaPath];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:resolvedPath]) {
+            UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Media file not found"
+                                                             message:@"Copy the installation image into A5VM Documents and select it again before starting the VM."
+                                                            delegate:nil
+                                                   cancelButtonTitle:@"OK"
+                                                   otherButtonTitles:nil] autorelease];
+            [alert show];
+            return;
+        }
+    }
+
+    if ([family isEqualToString:@"macos"]) {
+        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"MacOS backend not ready"
+                                                         message:@"The MacOS preset is saved, but the Macintosh ROM/68k backend has not been connected to the iOS 6 runner yet."
+                                                        delegate:nil
+                                               cancelButtonTitle:@"OK"
+                                               otherButtonTitles:nil] autorelease];
+        [alert show];
+        return;
+    }
+    if ([family isEqualToString:@"windows"] && [mediaPath length] == 0) {
+        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Installation media required"
+                                                         message:@"Choose a Windows IMG boot disk or ISO before starting this VM."
+                                                        delegate:nil
+                                               cancelButtonTitle:@"OK"
+                                               otherButtonTitles:nil] autorelease];
+        [alert show];
+        return;
+    }
+    if ([mediaPath length] != 0 && !floppyImage) {
+        UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"ISO needs QEMU"
+                                                         message:@"This iOS 6 build can boot IMG/IMA/DSK floppy media. ISO/CD-ROM boot will be enabled when the QEMU display backend is connected."
+                                                        delegate:nil
+                                               cancelButtonTitle:@"OK"
+                                               otherButtonTitles:nil] autorelease];
+        [alert show];
+        return;
+    }
     NSString *capability = [_machine objectForKey:@"capability"];
     if ([capability rangeOfString:@"floppy boot"].location == NSNotFound) {
         UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"Preset not available yet"
