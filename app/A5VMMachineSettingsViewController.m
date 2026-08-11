@@ -140,7 +140,7 @@
         NSString *storage = [[_machine objectForKey:@"storage"] lowercaseString];
         if ([storage rangeOfString:@"floppy"].location == NSNotFound) {
             UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"IDE storage"
-                                                             message:@"This preset uses an IDE disk. Its storage controller is not available in the iOS 6 runner yet."
+                                                             message:@"This preset has a persistent IDE disk attached. The built-in image editor currently edits floppy images only."
                                                             delegate:nil
                                                    cancelButtonTitle:@"OK"
                                                    otherButtonTitles:nil] autorelease];
