@@ -168,8 +168,9 @@ pushd "$BUILD_DIR" >/dev/null
     --disable-libiscsi --disable-pvrdma --disable-usb-redir \
     --disable-libusb --disable-smartcard --disable-tpm --disable-libxml2 \
     --disable-attr --disable-xfsctl --disable-mpath --disable-libpmem \
-    --disable-pie --disable-malloc-trim --with-coroutine=libucontext \
-    --extra-cflags="-I$DEPS_DIR/include" --extra-ldflags="-L$DEPS_DIR/lib"
+      --disable-pie --disable-malloc-trim --with-coroutine=libucontext \
+      --extra-cflags="$IOS_CFLAGS -I$DEPS_DIR/include" \
+      --extra-ldflags="$IOS_LDFLAGS -L$DEPS_DIR/lib"
 make -j2 i386-softmmu/all
 popd >/dev/null
 
