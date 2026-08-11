@@ -12,6 +12,7 @@ DEPS_DIR="$WORK_DIR/deps"
 SRC_DIR="$WORK_DIR/src"
 BUILD_DIR="$WORK_DIR/qemu-build"
 IOS_MIN_VERSION=${IOS_MIN_VERSION:-6.0}
+IOS_SDK_VERSION=${IOS_SDK_VERSION:-6.1}
 
 mkdir -p "$DEPS_DIR" "$SRC_DIR" "$OUT_DIR"
 
@@ -19,11 +20,22 @@ mkdir -p "$DEPS_DIR" "$SRC_DIR" "$OUT_DIR"
 # per-thread CPU/runtime state available on this deployment target.
 IOS_CFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION} -fPIC -femulated-tls"
 IOS_LDFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${IOS_MIN_VERSION}"
-# Apple clang rejects TLS variables when the source target is an iOS
-# triple.  QEMU's objects do not use iOS-only APIs, so compile the QEMU
-# sources for the ARMv7 Darwin ABI while retaining the iPhoneOS SDK and
-# deployment target for the final link.
+# Apple clang hard-disables __thread/TLS at the *frontend* for any iOS
+# deployment target below 8.0, regardless of -femulated-tls: the check is
+# keyed off the OS version baked into the target triple, not the codegen
+# strategy.  QEMU's configure and sources need __thread, so both compiling
+# and linking QEMU itself must avoid an iOS-versioned triple entirely; only
+# the ARMv7 Darwin ABI (no OS version gate) plus the iPhoneOS sysroot for
+# headers/libraries.  Do not reintroduce an iOS target anywhere QEMU_LDFLAGS
+# can reach configure's compile-and-link probes (e.g. its unconditional
+# TLS check): configure builds each probe with one clang invocation using
+# both QEMU_CFLAGS and QEMU_LDFLAGS together, and the *last* -target flag
+# on that command line wins for the whole invocation, so a stray iOS
+# triple in LDFLAGS silently re-enables the very gate QEMU_CFLAGS avoids.
+# The resulting binary has no iOS platform/version load command from the
+# linker; it is stamped on after linking, see the `vtool` call below.
 QEMU_CFLAGS="-target armv7-apple-darwin -arch armv7 -isysroot $SDKROOT -fPIC -femulated-tls"
+QEMU_LDFLAGS="-target armv7-apple-darwin -arch armv7 -isysroot $SDKROOT"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
@@ -162,7 +174,7 @@ pushd "$BUILD_DIR" >/dev/null
 CFLAGS="$QEMU_CFLAGS -I$DEPS_DIR/include" \
 CXXFLAGS="$QEMU_CFLAGS -nostdinc++ -I$DEPS_DIR/include" \
 CPPFLAGS="-I$DEPS_DIR/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12" \
-LDFLAGS="$IOS_LDFLAGS -L$DEPS_DIR/lib" \
+LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
 "$QEMU_SOURCE/configure" \
     --cc="$CC" --host-cc="$(command -v clang)" --cpu=arm \
     --target-list=i386-softmmu --enable-shared-lib --disable-werror \
@@ -181,12 +193,18 @@ LDFLAGS="$IOS_LDFLAGS -L$DEPS_DIR/lib" \
     --disable-attr --disable-xfsctl --disable-mpath --disable-libpmem \
       --disable-pie --disable-malloc-trim --with-coroutine=libucontext \
       --extra-cflags="$QEMU_CFLAGS -I$DEPS_DIR/include" \
-      --extra-ldflags="$IOS_LDFLAGS -L$DEPS_DIR/lib"
+      --extra-ldflags="$QEMU_LDFLAGS -L$DEPS_DIR/lib"
 make -j2 i386-softmmu/all
 popd >/dev/null
 
 QEMU_LIBRARY="$BUILD_DIR/i386-softmmu/libqemu-system-i386.dylib"
 test -f "$QEMU_LIBRARY"
+# QEMU_LDFLAGS carries no iOS-versioned target (see above), so the linker
+# wrote no iOS platform/version load command.  Stamp the real deployment
+# target on the finished dylib so iOS accepts it as a proper iPhoneOS 6
+# binary instead of an untagged/generic Darwin one.
+xcrun --sdk iphoneos vtool -set-build-version ios "$IOS_MIN_VERSION" "$IOS_SDK_VERSION" \
+    -replace -output "$QEMU_LIBRARY" "$QEMU_LIBRARY"
 cp "$QEMU_LIBRARY" "$OUT_DIR/"
 cp -R "$BUILD_DIR/pc-bios" "$OUT_DIR/pc-bios"
 cp "$QEMU_SOURCE/COPYING" "$OUT_DIR/QEMU-COPYING"
