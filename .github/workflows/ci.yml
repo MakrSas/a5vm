@@ -148,3 +148,49 @@ jobs:
           name: a5vm-qemu-i386-${{ github.sha }}
           path: third_party/qemu/i386-softmmu/qemu-system-i386
           if-no-files-found: error
+
+  qemu-ios-armv7:
+    name: UTM QEMU iOS 6 ARMv7 library
+    runs-on: macos-13
+    steps:
+      - name: Check out source and QEMU fork
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install cross-build tools
+        run: |
+          brew list meson >/dev/null 2>&1 || brew install meson
+          brew list pkg-config >/dev/null 2>&1 || brew install pkg-config
+
+      - name: Download iPhoneOS 6.1 SDK
+        run: |
+          SDK_BASE="https://raw.githubusercontent.com/Sn0wCooder/theos-sdks/master/iPhoneOS6.1.sdk"
+          for part in 001 002 003; do
+            curl -L --fail --retry 3 \
+              "$SDK_BASE/iPhoneOS6.1.sdk.zip.$part" \
+              -o "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip.$part"
+          done
+          cat "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip."* > "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip"
+          mkdir -p "$RUNNER_TEMP/iphone-sdk"
+          unzip -q "$RUNNER_TEMP/iPhoneOS6.1.sdk.zip" -d "$RUNNER_TEMP/iphone-sdk"
+          SDK=$(find "$RUNNER_TEMP/iphone-sdk" -type d -name iPhoneOS6.1.sdk -print -quit)
+          test -n "$SDK"
+          echo "A5VM_IOS_SDK=$SDK" >> "$GITHUB_ENV"
+
+      - name: Build QEMU shared library for iOS 6 ARMv7
+        run: |
+          chmod +x ci/build-qemu-ios-armv7.sh
+          mkdir -p build/qemu-ios-armv7
+          SDKROOT="$A5VM_IOS_SDK" \
+            QEMU_SOURCE="$GITHUB_WORKSPACE/third_party/qemu" \
+            OUT_DIR="$GITHUB_WORKSPACE/build/qemu-ios-armv7" \
+            WORK_DIR="$RUNNER_TEMP/a5vm-qemu-ios-work" \
+            ci/build-qemu-ios-armv7.sh
+
+      - name: Upload iOS QEMU library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: a5vm-qemu-ios-armv7-${{ github.sha }}
+          path: build/qemu-ios-armv7
+          if-no-files-found: error
