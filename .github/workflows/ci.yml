@@ -151,7 +151,7 @@ jobs:
 
   qemu-ios-armv7:
     name: UTM QEMU iOS 6 ARMv7 library
-    runs-on: macos-13
+    runs-on: macos-latest
     steps:
       - name: Check out source and QEMU fork
         uses: actions/checkout@v4
