@@ -39,7 +39,7 @@
     if (_runtime && !_isRunning) {
         if (tag == 0x0D) {
             a5vm_vga_text_putc(&_runtime->vga, '\n');
-            a5vm_vga_text_write(&_runtime->vga, "A:\>");
+            a5vm_vga_text_write(&_runtime->vga, "A:\\>");
             [self renderVGA];
         } else if (tag == 0x08) {
             a5vm_vga_text_putc(&_runtime->vga, '\b');
