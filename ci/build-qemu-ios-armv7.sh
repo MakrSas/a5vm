@@ -82,9 +82,14 @@ build_autotools_install_only() {
         return
     fi
     pushd "$SRC_DIR/$directory" >/dev/null
-    ./configure --host=arm-apple-darwin --prefix="$DEPS_DIR" \
-        --disable-shared --enable-static "$@"
-    make -j2 install
+      ./configure --host=arm-apple-darwin --prefix="$DEPS_DIR" \
+          --disable-shared --enable-static "$@"
+      # Pixman 0.40.0 has no configure switch for its test suite.  Its
+      # top-level install target recurses into test/, whose host-only helper
+      # symbols cannot be linked for armv7.  Install the library and headers
+      # while leaving the optional demos/tests out of the recursion.
+      perl -0pi -e 's/^SUBDIRS = pixman demos test$/SUBDIRS = pixman/m' Makefile
+      make -j2 install
     touch .a5vm-built
     popd >/dev/null
 }
