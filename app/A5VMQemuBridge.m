@@ -304,6 +304,21 @@ static void *A5VMQemuThreadEntry(void *context) {
     _argv = argv;
     _argc = (int)count;
 
+    /*
+     * Balanced in -notifyStopped, once threadMain is done touching self
+     * (its last two statements are "_running = NO;" then
+     * "[self notifyStopped];", so nothing in the thread function reads
+     * self again after this releases). Without this, a caller that
+     * drops its own last reference to this bridge (e.g. the user
+     * backing out of the VM screen) while qemu_main_loop() is still
+     * running would let -dealloc free this object out from under the
+     * still-live detached pthread, which keeps calling back into (now
+     * freed) self -- see the -dealloc comment. This keeps the bridge
+     * alive on its own until it genuinely finishes, independent of
+     * whoever created it.
+     */
+    [self retain];
+
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
@@ -315,6 +330,7 @@ static void *A5VMQemuThreadEntry(void *context) {
         _argv = NULL;
         _argc = 0;
         [self notifyFailure:[NSString stringWithFormat:@"pthread_create failed (%d)", result]];
+        [self release];
         return NO;
     }
     _running = YES;
@@ -465,6 +481,10 @@ static void *A5VMQemuThreadEntry(void *context) {
             [delegate qemuBridgeDidStop:self];
         }
     });
+    /* Balances the retain taken in -startWithArguments: right before
+       pthread_create() succeeded; always reached exactly once per
+       successful start, from threadMain's last statement. */
+    [self release];
 }
 
 - (void)deliverImage:(UIImage *)image {
@@ -477,13 +497,16 @@ static void *A5VMQemuThreadEntry(void *context) {
 }
 
 - (void)dealloc {
-    /* Deliberately does not join/kill _thread: qemu_cleanup() must run
-       to completion on QEMU's own terms before this object's memory
-       (argv, listener) is safe to free, and there is no supported way
-       to force qemu_main_loop() to return early other than the guest
-       actually shutting down or -requestPowerDown succeeding. Callers
-       must wait for -qemuBridgeDidStop: before releasing their last
-       reference. */
+    /* This should only ever run after -notifyStopped's matching
+       [self release] -- see the retain taken in -startWithArguments:
+       -- meaning qemu_main_loop() has already returned and qemu_cleanup()
+       already ran by the time we get here. A caller dropping its own
+       last reference earlier than that (e.g. the user backing out of
+       the VM screen while a guest is still running) does not trigger
+       this: the self-retain keeps the object alive on its own until
+       threadMain is genuinely done with it, since there is no supported
+       way to force qemu_main_loop() to return early other than the
+       guest actually shutting down or -requestPowerDown succeeding. */
     [super dealloc];
 }
 

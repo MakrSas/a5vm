@@ -30,6 +30,23 @@
 
 - (void)sendSpecialKey:(UIButton *)sender {
     NSInteger tag = sender.tag;
+    if (_usesQemu) {
+        A5VMQemuSpecialKey key;
+        switch (tag) {
+            case 0x1B:         key = A5VMQemuKeyEscape;     break;
+            case 0x09:         key = A5VMQemuKeyTab;        break;
+            case 0x08:         key = A5VMQemuKeyBackspace;  break;
+            case 0x0D:         key = A5VMQemuKeyReturn;     break;
+            case 0x100 + 0x4B: key = A5VMQemuKeyLeftArrow;  break;
+            case 0x100 + 0x48: key = A5VMQemuKeyUpArrow;    break;
+            case 0x100 + 0x50: key = A5VMQemuKeyDownArrow;  break;
+            case 0x100 + 0x4D: key = A5VMQemuKeyRightArrow; break;
+            default: return;
+        }
+        [_qemuBridge sendSpecialKey:key down:YES];
+        [_qemuBridge sendSpecialKey:key down:NO];
+        return;
+    }
     if (tag >= 0x100) {
         [self queueKeyboardByte:0x00];
         [self queueKeyboardByte:(uint8_t)(tag - 0x100)];
@@ -81,16 +98,72 @@
                         nil];
         }
         _machineName = [[_machine objectForKey:@"name"] copy];
-        _runtime = (a5vm_machine *)calloc(1, sizeof(a5vm_machine));
-        if (!a5vm_machine_init(_runtime)) {
-            free(_runtime);
-            _runtime = NULL;
+
+        /*
+         * QEMU is only ever selected for Windows + ISO media -- the one
+         * combination A5VMMachineSettingsViewController's runMachine:
+         * currently refuses outright with its "ISO needs QEMU" alert
+         * before ever constructing this view controller. That refusal
+         * is deliberately still in place (see HANDOFF.md): _usesQemu
+         * can never actually be YES in practice yet, so this whole
+         * branch is unreachable, dormant code, not a live behavior
+         * change. Flipping it on is a separate, explicit decision.
+         */
+        NSString *family = [[_machine objectForKey:@"osFamily"] lowercaseString];
+        NSString *mediaExtension = [[[_machine objectForKey:@"mediaPath"] pathExtension] lowercaseString];
+        _usesQemu = [family isEqualToString:@"windows"] && [mediaExtension isEqualToString:@"iso"];
+
+        if (_usesQemu) {
+            _qemuBridge = [[A5VMQemuBridge alloc] init];
+            _qemuBridge.delegate = self;
         } else {
-            [self loadDiskImage];
-            [self loadHardDiskImage];
+            _runtime = (a5vm_machine *)calloc(1, sizeof(a5vm_machine));
+            if (!a5vm_machine_init(_runtime)) {
+                free(_runtime);
+                _runtime = NULL;
+            } else {
+                [self loadDiskImage];
+                [self loadHardDiskImage];
+            }
         }
     }
     return self;
+}
+
+- (NSInteger)ramMegabytesFromConfig {
+    NSString *ramString = [_machine objectForKey:@"ram"];
+    NSScanner *scanner = [NSScanner scannerWithString:ramString];
+    NSInteger value = 0;
+    if (![scanner scanInteger:&value] || value <= 0) return 64;
+    NSString *unit = [[ramString substringFromIndex:[scanner scanLocation]]
+                      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if ([[unit lowercaseString] hasPrefix:@"kb"]) return (value + 1023) / 1024;
+    return value;
+}
+
+- (void)qemuBridge:(A5VMQemuBridge *)bridge didUpdateScreen:(UIImage *)image {
+    if (bridge != _qemuBridge) return;
+    [_displayView setFramebufferImage:image];
+}
+
+- (void)qemuBridge:(A5VMQemuBridge *)bridge didFailWithMessage:(NSString *)message {
+    if (bridge != _qemuBridge) return;
+    _isRunning = NO;
+    _isPaused = NO;
+    _statusLabel.text = @"QEMU error";
+    UIAlertView *alert = [[[UIAlertView alloc] initWithTitle:@"QEMU failed to start"
+                                                     message:message
+                                                    delegate:nil
+                                           cancelButtonTitle:@"OK"
+                                           otherButtonTitles:nil] autorelease];
+    [alert show];
+}
+
+- (void)qemuBridgeDidStop:(A5VMQemuBridge *)bridge {
+    if (bridge != _qemuBridge) return;
+    _isRunning = NO;
+    _isPaused = NO;
+    _statusLabel.text = @"Stopped";
 }
 
 - (void)loadView {
@@ -279,6 +352,22 @@
 
 - (void)powerVM:(id)sender {
     (void)sender;
+    if (_usesQemu) {
+        if (_poweredOn) {
+            if (_qemuBridge.isRunning) [_qemuBridge requestPowerDown];
+            _poweredOn = NO;
+            _keyboardVisible = NO;
+            _inputField.hidden = YES;
+            [_inputField resignFirstResponder];
+            _powerButton.accessibilityValue = @"Off";
+            _statusLabel.text = _qemuBridge.isRunning ? @"Shutting down…" : @"Off";
+        } else {
+            _poweredOn = YES;
+            _powerButton.accessibilityValue = @"On";
+            [self resetVM:nil];
+        }
+        return;
+    }
     if (_poweredOn) {
         [self stopRunner];
         if (_runtime) a5vm_machine_reset(_runtime);
@@ -299,6 +388,20 @@
 - (void)pauseVM:(id)sender {
     (void)sender;
     if (!_isRunning) return;
+    if (_usesQemu) {
+        if (_isPaused) {
+            _isPaused = NO;
+            _pauseButton.accessibilityValue = @"Running";
+            _statusLabel.text = @"Running";
+            [_qemuBridge resume];
+        } else {
+            _isPaused = YES;
+            _pauseButton.accessibilityValue = @"Paused";
+            _statusLabel.text = @"Paused";
+            [_qemuBridge pause];
+        }
+        return;
+    }
     if (_isPaused) {
         _isPaused = NO;
         _pauseButton.accessibilityValue = @"Running";
@@ -325,6 +428,9 @@
     _isRunning = NO;
     _isPaused = NO;
     _pauseButton.accessibilityValue = @"Ready";
+    if (_usesQemu && _qemuBridge.isRunning) {
+        [_qemuBridge requestPowerDown];
+    }
 }
 
 - (void)finishRunWithStatus:(a5vm_cpu_status)status {
@@ -368,6 +474,15 @@
     NSString *filename = [_machine objectForKey:@"diskImage"];
     if ([filename length] == 0) filename = @"a5vm-demo.dsk";
     return [documents stringByAppendingPathComponent:filename];
+}
+
+- (NSString *)qemuMediaPath {
+    NSString *mediaPath = [_machine objectForKey:@"mediaPath"];
+    if ([mediaPath length] == 0) return nil;
+    if ([mediaPath hasPrefix:@"/"]) return mediaPath;
+    NSArray *directories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                                NSUserDomainMask, YES);
+    return [[directories objectAtIndex:0] stringByAppendingPathComponent:mediaPath];
 }
 
 - (NSString *)bootImagePath {
@@ -429,6 +544,26 @@
 - (void)runDemo:(id)sender {
     (void)sender;
     a5vm_cpu_status status;
+    if (_usesQemu) {
+        if (!_poweredOn) return;
+        if (_isRunning) {
+            if (_isPaused) [self pauseVM:nil];
+            return;
+        }
+        NSString *mediaPath = [self qemuMediaPath];
+        if (!mediaPath || ![[NSFileManager defaultManager] fileExistsAtPath:mediaPath]) {
+            _statusLabel.text = @"Media file not found";
+            return;
+        }
+        NSArray *arguments = [A5VMQemuBridge argumentsWithRAMMegabytes:[self ramMegabytesFromConfig]
+                                                        driveImagePath:mediaPath
+                                                                 isISO:YES];
+        _isRunning = [_qemuBridge startWithArguments:arguments];
+        _isPaused = NO;
+        _pauseButton.accessibilityValue = _isRunning ? @"Running" : @"Ready";
+        _statusLabel.text = _isRunning ? @"Starting…" : @"Failed to start";
+        return;
+    }
     if (!_runtime || !_poweredOn) return;
     if (_isRunning) {
         if (_isPaused) [self pauseVM:nil];
@@ -467,6 +602,13 @@
 
 - (void)resetVM:(id)sender {
     (void)sender;
+    if (_usesQemu) {
+        if (_qemuBridge.isRunning) [_qemuBridge requestReset];
+        _poweredOn = YES;
+        _powerButton.accessibilityValue = @"On";
+        _statusLabel.text = _qemuBridge.isRunning ? @"Resetting…" : @"Ready";
+        return;
+    }
     if (!_runtime) return;
     [self stopRunner];
     _poweredOn = YES;
@@ -481,6 +623,18 @@
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
+    if (_usesQemu) {
+        NSString *command = textField.text;
+        NSUInteger length = [command length];
+        for (NSUInteger i = 0; i < length; i++) {
+            [_qemuBridge sendCharacter:[command characterAtIndex:i]];
+        }
+        [_qemuBridge sendSpecialKey:A5VMQemuKeyReturn down:YES];
+        [_qemuBridge sendSpecialKey:A5VMQemuKeyReturn down:NO];
+        textField.text = @"";
+        [textField resignFirstResponder];
+        return YES;
+    }
     if (!_runtime) return YES;
     NSString *command = textField.text;
     const char *bytes = [command UTF8String];
@@ -522,6 +676,8 @@
     [self stopRunner];
     [self saveDiskImage];
     [self saveHardDiskImage];
+    _qemuBridge.delegate = nil;
+    [_qemuBridge release];
     [_machine release];
     [_machineName release];
     [_screenTitle release];
