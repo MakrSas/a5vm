@@ -27,7 +27,36 @@
 - (void)setTextBuffer:(const uint8_t *)cells {
     memcpy(_cells, cells, sizeof(_cells));
     _hasTextBuffer = YES;
+    if (_hasFramebuffer) {
+        _hasFramebuffer = NO;
+        [_framebufferImage release];
+        _framebufferImage = nil;
+    }
     [self setNeedsDisplay];
+}
+
+- (void)setFramebufferImage:(UIImage *)image {
+    if (_framebufferImage != image) {
+        [_framebufferImage release];
+        _framebufferImage = [image retain];
+    }
+    _hasFramebuffer = (image != nil);
+    _hasTextBuffer = NO;
+    [self setNeedsDisplay];
+}
+
+- (void)drawFramebuffer {
+    CGRect bounds = self.bounds;
+    CGSize imageSize = _framebufferImage.size;
+    if (imageSize.width <= 0.0f || imageSize.height <= 0.0f) return;
+
+    CGFloat scale = MIN(bounds.size.width / imageSize.width,
+                        bounds.size.height / imageSize.height);
+    CGSize drawSize = CGSizeMake(imageSize.width * scale, imageSize.height * scale);
+    CGRect drawRect = CGRectMake(bounds.origin.x + (bounds.size.width - drawSize.width) * 0.5f,
+                                 bounds.origin.y + (bounds.size.height - drawSize.height) * 0.5f,
+                                 drawSize.width, drawSize.height);
+    [_framebufferImage drawInRect:drawRect];
 }
 
 - (void)drawTextBuffer {
@@ -71,6 +100,11 @@
     CGContextSetLineWidth(context, 2.0f);
     CGContextStrokeRect(context, CGRectInset(self.bounds, 1.0f, 1.0f));
 
+    if (_hasFramebuffer) {
+        [self drawFramebuffer];
+        return;
+    }
+
     if (_hasTextBuffer) {
         [self drawTextBuffer];
         return;
@@ -86,6 +120,7 @@
 
 - (void)dealloc {
     [_displayText release];
+    [_framebufferImage release];
     [super dealloc];
 }
 
