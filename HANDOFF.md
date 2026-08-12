@@ -45,27 +45,26 @@ GUI и portable backend работают. Полный QEMU backend ещё не 
 
 ## Проверенное состояние
 
-Actions run 31552594732 (commit d6a66b4) — **весь pipeline зелёный, включая
-QEMU iOS 6 ARMv7 library**:
+Actions run 31553129353 (commit d4a8a92) — **весь pipeline зелёный**, и
+теперь `a5vm-ios6-gui-d4a8a92...` artifact (28 MB, было ~61 KB) реально
+содержит `A5VM.app/libqemu-system-i386.dylib` + `pc-bios/` + `QEMU-COPYING`
+рядом с `A5VM` — `ios-armv7` job теперь зависит от `qemu-ios-armv7` и
+докачивает/встраивает его вывод перед упаковкой (`.github/workflows/ci.yml`).
+Библиотека подписана `ldid -S` так же, как основной executable.
 
-- iOS 6 ARMv7 tool — success;
-- portable core Ubuntu — success;
-- portable core macOS — success;
-- QEMU i386 smoke — success;
-- QEMU iOS 6 ARMv7 library — **success**, artifact
-  `a5vm-qemu-ios-armv7-d6a66b4...` (libqemu-system-i386.dylib, ~28 MB).
+Ничего в приложении её пока не грузит и не вызывает — bridge (приоритет 3
+ниже) не начат.
 
-Это первый прогон, где QEMU-библиотека под iOS ARMv7 вообще собралась и
-слинковалась. Она пока НЕ включена в iOS GUI artifact (`a5vm-ios6-gui...`) и
-НЕ подключена к UIKit — это следующий шаг (см. приоритеты).
-
-Зелёный GUI iOS artifact от commit 9ca7fd1 установлен на устройство:
+Установленная на устройстве GUI-сборка ещё СТАРАЯ (commit 9ca7fd1, без QEMU
+внутри):
 
     /Applications/A5VM.app/A5VM       202160 bytes
     /Applications/A5VM.app/Info.plist 1057 bytes
 
-Последний commit fa3a4f6 меняет только QEMU CI script, поэтому установленная
-GUI-версия соответствует состоянию 9ca7fd1.
+Новый artifact с QEMU внутри на устройство ещё не заливался — SFTP-заливка
+28 МБ требует подтверждения владельца перед выполнением (файловая операция
+на реальном устройстве), и пока нет bridge-кода, который бы её использовал,
+так что смысла заливать прямо сейчас нет.
 
 Windows 98 boot image уже загружен на телефон:
 
@@ -279,11 +278,9 @@ Portable core CI build:
 
 1. ~~Исправить QEMU ARMv7 iOS 6 TLS без unsafe глобальной подмены.~~ **Готово**
    (и заодно ещё 11 независимых build-багов после TLS, см. раздел QEMU).
-2. Получить QEMU dylib artifact и включить его в iOS package — dylib уже
-   собирается (`a5vm-qemu-ios-armv7` artifact), но GUI-сборка (`iOS 6 ARMv7
-   tool` job) его пока не подхватывает. Нужно либо объединить оба CI job'а
-   в один, либо скачать QEMU artifact в GUI job и скопировать
-   `libqemu-system-i386.dylib` + `pc-bios/` внутрь `A5VM.app` перед zip/ldid.
+2. ~~Получить QEMU dylib artifact и включить его в iOS package.~~ **Готово** —
+   `ios-armv7` CI job зависит от `qemu-ios-armv7` и встраивает dylib/pc-bios
+   в `A5VM.app` перед упаковкой. Ничего его пока не грузит/не вызывает.
 3. Сделать Objective-C/C bridge: dedicated pthread, lifecycle, VGA framebuffer,
    keyboard/scancode callback и ошибки QMP.
 4. Переключить Windows ISO path на QEMU backend.
