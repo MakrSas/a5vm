@@ -52,6 +52,15 @@ QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysro
 # translation unit instead of patching the vendored QEMU source (see
 # qemu-ios-clock-compat.h for why).
 QEMU_CFLAGS="$QEMU_CFLAGS -include $SCRIPT_DIR/qemu-ios-clock-compat.h"
+# accel/tcg/translate-all.c's CONFIG_IOS_JIT alloc_jit_rw_mirror() (real,
+# used mach_vm_remap() code for the classic iOS dual RX/RW JIT-buffer
+# mapping trick, not a stub) uses VM_FLAGS_RANDOM_ADDR, an XNU vm_map(2)
+# flag bit the iPhoneOS6.1 SDK's <mach/vm_statistics.h> predates. The
+# value is a stable kernel-ABI constant (the kernel itself interprets
+# this bit, so it cannot change meaning across OS versions without
+# breaking old binaries), so define it directly rather than shim a
+# header for one macro.
+QEMU_CFLAGS="$QEMU_CFLAGS -DVM_FLAGS_RANDOM_ADDR=0x00000800"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
 # clang's automatic libc++ header search apparently does not kick in for
