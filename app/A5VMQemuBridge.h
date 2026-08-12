@@ -69,7 +69,7 @@ typedef enum {
  * May be called only once per instance -- create a new A5VMQemuBridge
  * for a fresh VM run.
  */
-- (BOOL)startWithArguments:(NSArray<NSString *> *)arguments;
+- (BOOL)startWithArguments:(NSArray *)arguments; /* of NSString */
 
 /* Requests a guest ACPI shutdown; -qemuBridgeDidStop: fires once the
    main loop actually exits. Safe to call from any thread. */

@@ -16,7 +16,7 @@
  * dylib itself -- not Makefile.ios's separate Theos build. A shared
  * library's consumer only needs its public C ABI, which is what this
  * declares, copied field-for-field/value-for-value from
- * third_party/qemu's headers and qapi/*.json at the pinned submodule
+ * third_party/qemu's headers and qapi schema files at the pinned submodule
  * commit (see HANDOFF.md). If a future QEMU submodule bump changes any
  * of these, this file needs updating to match.
  */
@@ -264,7 +264,7 @@ static void *A5VMQemuThreadEntry(void *context) {
     return _running;
 }
 
-- (BOOL)startWithArguments:(NSArray<NSString *> *)arguments {
+- (BOOL)startWithArguments:(NSArray *)arguments {
     if (_startRequested) return NO;
     _startRequested = YES;
 
