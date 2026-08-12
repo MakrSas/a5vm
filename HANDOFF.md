@@ -3,7 +3,7 @@
 Дата: 2026-08-12  
 Репозиторий: https://github.com/MakrSas/a5vm  
 Ветка: agent/initial-a5vm  
-HEAD: d6a66b4 — Disable sin/cos builtin recognition, not just sincos
+HEAD: 15eb0ff — Fix A5VMQemuBridge compile errors found by the first real build
 
 ## Цель
 
@@ -45,15 +45,26 @@ GUI и portable backend работают. Полный QEMU backend ещё не 
 
 ## Проверенное состояние
 
-Actions run 31553129353 (commit d4a8a92) — **весь pipeline зелёный**, и
-теперь `a5vm-ios6-gui-d4a8a92...` artifact (28 MB, было ~61 KB) реально
-содержит `A5VM.app/libqemu-system-i386.dylib` + `pc-bios/` + `QEMU-COPYING`
-рядом с `A5VM` — `ios-armv7` job теперь зависит от `qemu-ios-armv7` и
-докачивает/встраивает его вывод перед упаковкой (`.github/workflows/ci.yml`).
-Библиотека подписана `ldid -S` так же, как основной executable.
+Actions run 31591059675 (commit 15eb0ff) — **весь pipeline зелёный**,
+включая линковку `A5VMQemuBridge.m` против настоящей QEMU dylib:
+`Linking application A5VM (armv7)…` прошёл без единой ошибки undefined
+symbol. Значит ВСЕ вручную объявленные ABI-сигнатуры в
+`app/A5VMQemuBridge.m` (qemu_init, qemu_main_loop, qemu_cleanup, vm_start,
+vm_stop, qemu_system_reset_request, qemu_system_powerdown_request,
+qemu_console_lookup_by_index, qemu_input_event_send_key_qcode,
+register_displaychangelistener, unregister_displaychangelistener,
+qemu_console_surface, четыре pixman_image_get_* функции) совпали с
+реальными экспортированными символами в собранной библиотеке — весомое
+подтверждение на уровне символов, но НЕ доказательство рантайм-корректности
+(структуры типа DisplayChangeListenerOps совпадают по layout только если
+компилятор одинаково укладывает поля, что должно быть так при одинаковом
+таргете/компиляторе, но не проверено на реальном запуске).
 
-Ничего в приложении её пока не грузит и не вызывает — bridge (приоритет 3
-ниже) не начат.
+`a5vm-ios6-gui-15eb0ff...` artifact (~28 MB) содержит `A5VM.app/A5VM`
+(линкован против QEMU) + `libqemu-system-i386.dylib` + `pc-bios/` +
+`QEMU-COPYING`. Bridge НЕ вызывается ниоткуда в UI — `A5VMQemuBridge`
+самодостаточный, скомпилированный, но не подключённый класс (см. раздел
+"ObjC/C bridge" ниже и приоритет 3).
 
 Установленная на устройстве GUI-сборка ещё СТАРАЯ (commit 9ca7fd1, без QEMU
 внутри):
@@ -61,10 +72,11 @@ Actions run 31553129353 (commit d4a8a92) — **весь pipeline зелёный*
     /Applications/A5VM.app/A5VM       202160 bytes
     /Applications/A5VM.app/Info.plist 1057 bytes
 
-Новый artifact с QEMU внутри на устройство ещё не заливался — SFTP-заливка
-28 МБ требует подтверждения владельца перед выполнением (файловая операция
-на реальном устройстве), и пока нет bridge-кода, который бы её использовал,
-так что смысла заливать прямо сейчас нет.
+Новый artifact с QEMU внутри на устройство ещё не заливался — владелец
+сказал "пиши, потом проверим на устройстве" (2026-08-12), но реальный
+device-тест ещё предстоит сделать. Пока НИЧЕГО не вызывает
+`A5VMQemuBridge`, установка нового артефакта ничего не даст — сначала
+нужна wiring-часть приоритета 3 (см. ниже), иначе тестировать нечего.
 
 Windows 98 boot image уже загружен на телефон:
 
@@ -221,6 +233,60 @@ JIT на jailbroken ARMv7 пока не реализован в A5VM; сейча
 рабочим `CONFIG_IOS_JIT` (dcache flush) — это для её СОБСТВЕННОГО TCG JIT,
 когда/если она будет реально запущена на устройстве.
 
+## ObjC/C bridge (app/A5VMQemuBridge.h/.m)
+
+Реализует приоритет 3 наполовину: сам класс написан полностью и линкуется
+(см. "Проверенное состояние"), но НИЧЕГО в UI его не вызывает.
+
+Дизайн: bridge и QEMU работают в ОДНОМ процессе (та же shared library), так
+что управление идёт напрямую через C API QEMU (`vm_start`/`vm_stop`,
+`qemu_system_reset_request`, `qemu_system_powerdown_request`,
+`qemu_input_event_send_key_qcode`), а не через QMP — не нужен монитор-сокет
+и JSON. QEMU headers НЕ инклюдятся (они требуют весь internal CONFIG_*
+header tree, собранный со специфичными флагами `ci/build-qemu-ios-armv7.sh`,
+не совместимыми с отдельной Theos-сборкой Makefile.ios) — вместо этого
+`A5VMQemuBridge.m` вручную объявляет нужные extern-прототипы и layout
+структур (`DisplaySurface`, `DisplayChangeListener`,
+`DisplayChangeListenerOps`), скопированные из `third_party/qemu`'s headers
+и `qapi/*.json` на текущем pinned commit. **Если submodule когда-нибудь
+обновится — эти объявления надо сверить заново.**
+
+Экран: `dpy_gfx_update`/`dpy_gfx_switch` коллбэки регистрируются через
+`register_displaychangelistener()` после `qemu_init()` (до
+`qemu_main_loop()`), копируют pixman-surface в `UIImage` и отдают в
+делегата на main thread. Предполагается формат `PIXMAN_x8r8g8b8`
+(дефолтный VGA surface QEMU) — **не проверено на реальном экране**; если
+цвета окажутся перепутаны, смотри комментарий в `A5VMQemuDeliverImage`.
+
+Известный, непреодолимый в лоб риск: `qemu_init()` при плохом argv зовёт
+`exit()` напрямую (это код обычного standalone-приложения, просто
+собранный как shared lib) — упадёт весь процесс A5VM, не только поток
+bridge. Значит argv, который будет строить будущий integration-код,
+должен быть тем, что `qemu_init()` штатно принимает как обычную
+командную строку QEMU.
+
+Что осталось для реальной интеграции в приоритете 3:
+
+1. Собрать argv из конфигурации машины (`_machine` dictionary в
+   `A5VMViewController.m`: `ram`, `architecture`, `mediaPath`/`diskImage`)
+   — примерно `-M pc -m <ram MB> -vga std -drive file=...,if=ide
+   -boot order=c` и т.п.; сейчас `ram` хранится строкой вида "640 KB",
+   нужен парсинг в число.
+2. Решить, какие profiles (Windows/i386, ISO media) идут через
+   `A5VMQemuBridge`, а какие остаются на portable interpreter — сейчас
+   development происходит полностью раздельно, `A5VMViewController`
+   ничего не знает про bridge.
+3. `A5VMDisplayView` умеет только текстовый VGA 80x25 (`setTextBuffer:`);
+   для растрового QEMU-экрана нужен новый режим — либо новый метод типа
+   `setFramebufferImage:`, либо отдельный view.
+4. Подключить Run/Pause/Reset/Power к `-pause`/`-resume`/`-requestReset`/
+   `-requestPowerDown` вместо текущей NSTimer-based `runSlice:` логики,
+   когда VM работает через bridge.
+5. Реальный device-тест: устанавливает ли `A5VM.app` с dylib внутри без
+   краша при запуске (проверяет `install_name_tool -id
+   @executable_path/...` из `ci/build-qemu-ios-armv7.sh` и линковку
+   Makefile.ios), и не падает ли `qemu_init()` с валидным argv.
+
 ## Git
 
 Последние важные commits (QEMU iOS TLS/build fix chain, 12 коммитов от
@@ -282,7 +348,15 @@ Portable core CI build:
    `ios-armv7` CI job зависит от `qemu-ios-armv7` и встраивает dylib/pc-bios
    в `A5VM.app` перед упаковкой. Ничего его пока не грузит/не вызывает.
 3. Сделать Objective-C/C bridge: dedicated pthread, lifecycle, VGA framebuffer,
-   keyboard/scancode callback и ошибки QMP.
+   keyboard/scancode callback и ошибки QMP. **Класс написан и линкуется**
+   (`app/A5VMQemuBridge.h/.m`, commit cb30793+15eb0ff) — pthread с
+   `qemu_init`/`qemu_main_loop`/`qemu_cleanup`, DisplayChangeListener для
+   экрана, `qemu_input_event_send_key_qcode` для клавиатуры,
+   `vm_start`/`vm_stop`/`qemu_system_reset_request`/
+   `qemu_system_powerdown_request` для lifecycle. **НЕ подключён к UI** и
+   **НЕ проверен на устройстве** — см. раздел "ObjC/C bridge" выше для
+   точного списка оставшегося (argv из конфига машины, растровый режим
+   A5VMDisplayView, wiring кнопок, device-тест).
 4. Переключить Windows ISO path на QEMU backend.
 5. Проверить DOS и Windows 98 boot image на устройстве; затем Windows 95 ISO.
 6. Добавить 68k Macintosh backend, ROM validation и MacOS boot.
