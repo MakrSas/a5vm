@@ -12,7 +12,13 @@
 #include <libkern/OSCacheControl.h>
 #include <stddef.h>
 
-void __clear_cache(char *start, char *end)
+/*
+ * clang recognizes this exact name as a builtin and checks any
+ * definition against its expected signature -- void (void *, void *),
+ * not char * -- so the parameter types below are load-bearing, not a
+ * style choice.
+ */
+void __clear_cache(void *start, void *end)
 {
-    sys_icache_invalidate(start, (size_t)(end - start));
+    sys_icache_invalidate(start, (size_t)((char *)end - (char *)start));
 }
