@@ -1,9 +1,9 @@
 # A5VM — handoff для следующего агента
 
-Дата: 2026-08-11  
+Дата: 2026-08-12  
 Репозиторий: https://github.com/MakrSas/a5vm  
 Ветка: agent/initial-a5vm  
-HEAD: fa3a4f6 — Use Darwin ARMv7 codegen for QEMU iOS TLS
+HEAD: d6a66b4 — Disable sin/cos builtin recognition, not just sincos
 
 ## Цель
 
@@ -45,16 +45,21 @@ GUI и portable backend работают. Полный QEMU backend ещё не 
 
 ## Проверенное состояние
 
-Actions run 31515523447:
+Actions run 31552594732 (commit d6a66b4) — **весь pipeline зелёный, включая
+QEMU iOS 6 ARMv7 library**:
 
 - iOS 6 ARMv7 tool — success;
 - portable core Ubuntu — success;
 - portable core macOS — success;
 - QEMU i386 smoke — success;
-- QEMU iOS 6 ARMv7 library — failure;
-- общий run — failure только из-за QEMU iOS job.
+- QEMU iOS 6 ARMv7 library — **success**, artifact
+  `a5vm-qemu-ios-armv7-d6a66b4...` (libqemu-system-i386.dylib, ~28 MB).
 
-Зелёный iOS artifact от commit 9ca7fd1 установлен на устройство:
+Это первый прогон, где QEMU-библиотека под iOS ARMv7 вообще собралась и
+слинковалась. Она пока НЕ включена в iOS GUI artifact (`a5vm-ios6-gui...`) и
+НЕ подключена к UIKit — это следующий шаг (см. приоритеты).
+
+Зелёный GUI iOS artifact от commit 9ca7fd1 установлен на устройство:
 
     /Applications/A5VM.app/A5VM       202160 bytes
     /Applications/A5VM.app/Info.plist 1057 bytes
@@ -139,35 +144,106 @@ Submodule third_party/qemu:
     branch: ios-support-v5.1.0
     commit: 2fb97f4f833a6442d2b62ca6bdbf80b3e386b133
 
-Документация: docs/QEMU_BACKEND.md. QEMU i386 Linux smoke build и cross-build
-libffi, PCRE2, GLib, Pixman работают. QEMU library в iOS artifact не входит.
+Документация: docs/QEMU_BACKEND.md. Вся сборка (i386 Linux smoke, deps
+cross-build, iOS ARMv7 library) теперь зелёная.
 
-Точный текущий блокер:
+### Как был исправлен QEMU ARMv7 iOS build (12 отдельных причин)
 
-    config-temp/qemu-conf.c:1:8:
-    error: thread-local storage is not supported for the current target
-    static __thread int tls_var;
+Все фиксы — в `ci/build-qemu-ios-armv7.sh` + два новых файла
+`ci/qemu-ios-clock-compat.h` и `ci/qemu-ios-libc-compat.c`. По порядку,
+каждый следующий баг открывался только после фикса предыдущего:
 
-Ошибка повторяется с iOS target и с экспериментом fa3a4f6, который компилирует
-QEMU sources с ARMv7 Darwin target, но сохраняет iPhoneOS linker. Simple target
-split не помог.
+1. **TLS gate.** Apple clang (`DarwinTargetInfo`, `OSTargets.h`) включает
+   `TLSSupported` для 32-бит iOS не-симулятора только при
+   `!Triple.isOSVersionLT(9)` — то есть нужен deployment target **iOS 9.0+**,
+   не 8.0. Голый `armv7-apple-darwin` (без "ios") тоже не работает — попадает
+   в default `false` того же конструктора. Компилируем и линкуем QEMU под
+   `-target armv7-apple-ios9.0` (переменная `QEMU_TLS_MIN_VERSION`), а
+   `-femulated-tls` всё равно даёт portable codegen без зависимости от
+   реального iOS 9 dyld. `vtool -set-build-version ios 6.0 6.1 -replace`
+   после линковки возвращает библиотеке настоящий iOS 6.0 minos.
+   Критично: `QEMU_CFLAGS` и `QEMU_LDFLAGS` должны быть идентичны — configure
+   склеивает их в один вызов clang для проверок, и выигрывает последний
+   `-target` в команде.
+2. **`--audio-drv-list=none` невалиден.** iOS-ветка в этом форке уже сама
+   ставит `audio_drv_list=""` по умолчанию; "none" не входит в whitelist.
+   Убрано, оставлено `--audio-drv-list=`.
+3. **`libucontext` не портирован на Darwin.** Вендоренный сабмодуль
+   (github.com/utmapp/libucontext, проект gcompat) — чистая Linux/glibc
+   ABI реализация, нигде в дереве нет Darwin-кода. `--with-coroutine=sigaltstack`
+   вместо `libucontext` — портируемый POSIX-бэкенд, который configure и так
+   принимает для Darwin.
+4. **`clock_gettime`/`CLOCK_MONOTONIC` не объявлены** в iPhoneOS6.1 SDK (Apple
+   добавила их около iOS 10). `qemu-ios-clock-compat.h` — компат-шim на
+   `mach_absolute_time()`/`gettimeofday()`, подключается через
+   `-include` для каждого translation unit.
+5. **`<cmath>` не находится** для `disas/libvixl` (C++ AArch64-дизассемблер,
+   которого QEMU всегда тянет для любого ARM-хоста, вне зависимости от
+   `--target-list`). Современный Xcode хранит `c++/v1` заголовки отдельно
+   **на каждый platform SDK**, а не в одном тулчейне. Ищем реальный `cmath`
+   через `find`, сначала в bundled iPhoneOS SDK, передаём через
+   `--extra-cxxflags` (не через `QEMU_CFLAGS`/`QEMU_LDFLAGS` — иначе
+   `-stdlib=libc++` попадёт в C-only probes с их локальным `-Werror`).
+6. **`fdopendir` не объявлен** — `hw/usb/dev-mtp.c` (MTP passthrough,
+   A5VM не нужен). Отключено через `CONFIG_USB_STORAGE_MTP=n`, дописанное в
+   `default-configs/i386-softmmu.mak`.
+7. **`tcg/arm/tcg-target.h`: `#error "Unimplemented dcache flush function"`**
+   под `CONFIG_IOS_JIT` (который configure всегда включает для iOS, без
+   опции отключить) — незаконченный upstream-стаб. Патчится на лету через
+   `perl` — вставляется реализация через `sys_dcache_flush()`
+   (`libkern/OSCacheControl.h`).
+8. **`VM_FLAGS_RANDOM_ADDR` не объявлена** — стабильная XNU vm_map(2)
+   константа (`0x00000800`), просто отсутствует в старом SDK; передана через
+   `-D`.
+9. **Не хватало `-lc++`/`-lSystem` на линковке.** Финальный `LINK` в
+   `rules.mak` использует `$(CFLAGS) $(QEMU_LDFLAGS)`, а не
+   `QEMU_CXXFLAGS` — `-stdlib=libc++` из `--extra-cxxflags` туда не попадает.
+10. **`___clear_cache`/`___exp10`/`___sincos_stret` не резолвятся.**
+    `___clear_cache` — реальный вызов `__builtin___clear_cache` из
+    `flush_icache_range()`; ни libSystem, ни compiler-rt его не дают на этой
+    комбинации SDK/target — реализован в `qemu-ios-libc-compat.c` через
+    `sys_icache_invalidate()` (сигнатура обязана быть `void*,void*` — это
+    ожидаемый тип clang-билтина). `___exp10`/`___sincos_stret` — Apple
+    переименовывает `pow(10,x)` и парные `sin(x)`/`cos(x)` (буквально в
+    `target/i386/fpu_helper.c`'s FSINCOS) в свои ABI-варианты для этого
+    таргета; отключено через `-fno-builtin-sin -fno-builtin-cos
+    -fno-builtin-sincos -fno-builtin-exp10 -fno-builtin-pow`. Важно:
+    `-fno-builtin-sincos` одной не хватает — в коде нет буквального вызова
+    `sincos()`, слияние идёт по отдельным `sin`/`cos`.
 
-Не использовать без доказательства корректности глобальную подмену:
-
-    -D__thread=
-
-Она может сломать per-thread state и многопоточность QEMU. Нужен явный
-emulated-TLS adaptation или готовый iOS-compatible patch. Проверить compile,
-link, TLS runtime symbols, запуск VM и thread=single/thread=multi.
+Всё найдено через полный лог CI (`gh run view --log`, полезно грепать
+`config-host.mak`/`V=1` вывод — в `dump_config_on_failure()` в скрипте уже
+добавлен дамп `CFLAGS`/`QEMU_CXXFLAGS`), НЕ угадыванием — каждая гипотеза
+проверялась либо чтением исходников clang/QEMU, либо явным анализом лога
+перед следующим пушем.
 
 JIT на jailbroken ARMv7 пока не реализован в A5VM; сейчас portable backend —
-обычный interpreter.
+обычный interpreter. Сама QEMU-библиотека, впрочем, теперь собирается с
+рабочим `CONFIG_IOS_JIT` (dcache flush) — это для её СОБСТВЕННОГО TCG JIT,
+когда/если она будет реально запущена на устройстве.
 
 ## Git
 
-Последние важные commits:
+Последние важные commits (QEMU iOS TLS/build fix chain, 12 коммитов от
+006502d до d6a66b4, все на agent/initial-a5vm, см. раздел QEMU выше):
 
-    fa3a4f6 Use Darwin ARMv7 codegen for QEMU iOS TLS
+    d6a66b4 Disable sin/cos builtin recognition, not just sincos
+    bb04183 Match clang's builtin signature for __clear_cache
+    4e8feb1 Resolve the last three link-time symbols (clear_cache/exp10/sincos)
+    e916049 Link QEMU against libc++/libSystem explicitly
+    9f3e005 Disable USB MTP passthrough, another pre-iOS10 SDK gap
+    6b8dc6f Define VM_FLAGS_RANDOM_ADDR, another pre-SDK XNU constant
+    4a212f4 Implement the missing ARM dcache flush for CONFIG_IOS_JIT
+    cfb0800 Search the iPhoneOS SDK for libc++ headers before other platforms
+    04b39cc Discover libc++ headers instead of guessing their path, add V=1
+    ec9b92e Point libvixl's C++ build at the toolchain's own libc++ headers
+    288bf7d Use sigaltstack coroutines, not the unported libucontext submodule
+    67f1cbb Drop invalid --audio-drv-list=none for QEMU iOS configure
+    f48530a Target iOS 9.0 for QEMU TLS, not generic Darwin
+    006502d Keep QEMU LDFLAGS off the iOS TLS gate (fa3a4f6 continuation)
+
+Более старые:
+
     9ca7fd1 Allow changing VM installation media from settings
     6cd4095 Fix DOS prompt escape in iOS keyboard shortcut
     4f220b3 Render shortcut enter and backspace keys
@@ -201,8 +277,13 @@ Portable core CI build:
 
 ## Приоритеты следующему агенту
 
-1. Исправить QEMU ARMv7 iOS 6 TLS без unsafe глобальной подмены.
-2. Получить QEMU dylib artifact и включить его в iOS package.
+1. ~~Исправить QEMU ARMv7 iOS 6 TLS без unsafe глобальной подмены.~~ **Готово**
+   (и заодно ещё 11 независимых build-багов после TLS, см. раздел QEMU).
+2. Получить QEMU dylib artifact и включить его в iOS package — dylib уже
+   собирается (`a5vm-qemu-ios-armv7` artifact), но GUI-сборка (`iOS 6 ARMv7
+   tool` job) его пока не подхватывает. Нужно либо объединить оба CI job'а
+   в один, либо скачать QEMU artifact в GUI job и скопировать
+   `libqemu-system-i386.dylib` + `pc-bios/` внутрь `A5VM.app` перед zip/ldid.
 3. Сделать Objective-C/C bridge: dedicated pthread, lifecycle, VGA framebuffer,
    keyboard/scancode callback и ошибки QMP.
 4. Переключить Windows ISO path на QEMU backend.
