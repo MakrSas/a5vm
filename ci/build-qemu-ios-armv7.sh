@@ -97,13 +97,18 @@ fi
 QEMU_CXXFLAGS_EXTRA="-stdlib=libc++${QEMU_CXX_STD_INCLUDE:+ -isystem $QEMU_CXX_STD_INCLUDE}"
 # ___exp10/___sincos_stret: for this target, Apple's compiler recognizes
 # patterns like pow(10, x) or adjacent sin(x)/cos(x) calls on the same
-# argument and rewrites them to Apple-renamed libm symbols with a
-# different (for sincos, struct-return "stret") ABI -- available on this
-# SDK's real-world successors, but postdating iPhoneOS6.1.sdk's stubs
-# just like clock_gettime and fdopendir. Keep the plain, always-linkable
-# pow/sin/cos calls instead of letting the compiler substitute symbols
-# this SDK's linker stubs do not know about.
-QEMU_CFLAGS="$QEMU_CFLAGS -fno-builtin-sincos -fno-builtin-exp10 -fno-builtin-pow"
+# argument (target/i386/fpu_helper.c's FSINCOS emulation calls plain
+# sin(fptemp) then cos(fptemp) right after each other -- there is no
+# literal sincos() call anywhere in QEMU's source to disable a builtin
+# for) and rewrites them to Apple-renamed libm symbols with a different
+# (for sincos, struct-return "stret") ABI -- available on this SDK's
+# real-world successors, but postdating iPhoneOS6.1.sdk's stubs just
+# like clock_gettime and fdopendir. -fno-builtin-sincos alone does not
+# stop this: the fusion pass keys off sin/cos individually being
+# recognized as builtins, not off a call to a function literally named
+# sincos. Disable recognition of sin/cos/pow themselves so the compiler
+# has nothing to fuse into an Apple-only symbol in the first place.
+QEMU_CFLAGS="$QEMU_CFLAGS -fno-builtin-sin -fno-builtin-cos -fno-builtin-sincos -fno-builtin-exp10 -fno-builtin-pow"
 # ___clear_cache: __builtin___clear_cache (flush_icache_range() in
 # tcg/arm/tcg-target.h, needed for JIT-generated ARM code to actually be
 # visible to the icache) lowers to a call to a runtime "__clear_cache"
