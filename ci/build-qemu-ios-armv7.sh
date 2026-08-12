@@ -209,6 +209,18 @@ CFLAGS="$IOS_CFLAGS -Wno-incompatible-function-pointer-types"
 build_autotools_install_only pixman-0.40.0 --disable-dependency-tracking --disable-libpng
 CFLAGS="$IOS_CFLAGS"
 
+# hw/usb/dev-mtp.c (an MTP host-directory-passthrough USB device, on by
+# default for i386-softmmu via hw/usb/Kconfig's "config USB_STORAGE_MTP
+# / default y / depends on USB") calls fdopendir(), which the
+# iPhoneOS6.1 SDK's headers do not declare -- one more POSIX addition
+# from after this SDK's era, like clock_gettime. A5VM only needs floppy
+# and IDE disk emulation for DOS/Windows, never host MTP passthrough, so
+# drop the whole feature instead of shimming another libc function:
+# default-configs/i386-softmmu.mak documents exactly this override
+# mechanism ("uncomment to disable these optional devices"), just
+# without USB_STORAGE_MTP pre-listed there.
+echo "CONFIG_USB_STORAGE_MTP=n" >> "$QEMU_SOURCE/default-configs/i386-softmmu.mak"
+
 # configure defaults an iOS host to the "libucontext" coroutine backend
 # (native Darwin ucontext is skipped entirely for the whole Darwin family
 # by configure's own probe, and --with-coroutine=ucontext hard-errors
