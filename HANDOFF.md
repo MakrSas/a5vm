@@ -72,10 +72,6 @@ qemu_console_surface, четыре pixman_image_get_* функции) совпа
     /Applications/A5VM.app/A5VM       202160 bytes
     /Applications/A5VM.app/Info.plist 1057 bytes
 
-Новый artifact с QEMU внутри на устройство ещё не заливался — владелец
-сказал "пиши, потом проверим на устройстве" (2026-08-12), но реальный
-device-тест ещё предстоит сделать.
-
 Actions run 31594064160 (commit ea71a3d) — **весь pipeline снова зелёный**
 после того, как `A5VMQemuBridge` полностью подключён к `A5VMViewController`
 (Run/Pause/Reset/Power/keyboard/textField, delegate callbacks,
@@ -84,10 +80,70 @@ Actions run 31594064160 (commit ea71a3d) — **весь pipeline снова зе
 `A5VMMachineSettingsViewController.m`'s `runMachine:` по-прежнему блокирует
 любой ISO-путь алертом "ISO needs QEMU" до того, как `A5VMViewController`
 вообще создаётся (см. ниже, пункт 2 в разделе "ObjC/C bridge" — это
-осознанно не тронуто). Значит вся wiring-логика скомпилирована и линкуется,
-но ни разу не выполнялась даже локально — сначала нужен явный владельческий
-switch-on или изолированный device-тест `qemu_init()`, потом можно
-устанавливать новый артефакт и ожидать реального QEMU-запуска.
+осознанно не тронуто).
+
+### Первый реальный device-тест (2026-08-12) — нашёл настоящий баг
+
+Владелец сказал "пиши, потом проверим на устройстве" — раз bridge стал
+собираться и линковаться (commit ea71a3d), сделан первый реальный device-тест
+через SSH на root@192.168.0.109, а не просто ещё один CI compile+link:
+
+1. Скачан artifact run 31594064160, залит через SFTP в
+   `/Applications/A5VM.app.new`, затем атомарно подменён (`mv` вместо
+   перезаписи на месте) с сохранением старого бандла как `.old` — чтобы
+   откат был мгновенным при провале.
+2. `chmod`/`chown`/`uicache -p` — всё как в проверенной схеме выше, `uicache`
+   вернул exit 0.
+3. Полноценно "нажать иконку" через SSH нельзя (`uiopen` принимает только
+   зарегистрированный URL scheme, у A5VM его нет; SpringBoard-запуск требует
+   физического действия на экране). Вместо этого бинарник запущен напрямую
+   (`su mobile -c 'DYLD_PRINT_LIBRARIES=1 timeout 5 /Applications/A5VM.app/A5VM'`)
+   — не полный UIKit-запуск (нет window-server сессии), но dyld резолвит все
+   линкованные зависимости (включая `libqemu-system-i386.dylib`) ДО main(),
+   так что этого достаточно, чтобы поймать ровно тот класс багов, которые CI
+   в принципе не может увидеть: реальную загрузку библиотек на самом
+   устройстве.
+4. **Нашёлся настоящий баг**: `A5VM` загрузился, `libqemu-system-i386.dylib`
+   тоже успешно нашёлся по `@executable_path/...` (то есть исправление
+   install_name из ci/build-qemu-ios-armv7.sh реально работает) — но сам
+   `libqemu-system-i386.dylib` тянет пять ЕЩЁ не пофикшенных зависимостей:
+
+       /Users/runner/work/_temp/a5vm-qemu-ios-work/deps/lib/libgio-2.0.0.dylib
+       /Users/runner/work/_temp/a5vm-qemu-ios-work/deps/lib/libgobject-2.0.0.dylib
+       /Users/runner/work/_temp/a5vm-qemu-ios-work/deps/lib/libglib-2.0.0.dylib
+       /Users/runner/work/_temp/a5vm-qemu-ios-work/deps/lib/libintl.8.dylib
+       /Users/runner/work/_temp/a5vm-qemu-ios-work/deps/lib/libgthread-2.0.0.dylib
+
+   Абсолютный путь CI runner'а, которого на устройстве физически не
+   существует — `dyld: Library not loaded ... Reason: image not found`,
+   процесс падает (exit 133) ДО main(). Через SpringBoard было бы то же
+   самое — приложение крашилось бы сразу при запуске.
+5. Найдено локально (без macOS/otool — через Python `lief`, парсит Mach-O
+   load commands напрямую): все другие зависимости (`libffi`, `pcre2`,
+   `pixman`) в этом скрипте уже собираются `--disable-shared --enable-static`
+   — только `glib`'ин meson-based build (см. раздел QEMU ниже) не передавал
+   `-Ddefault_library=static`, так что meson по умолчанию собрал его (и его
+   `proxy-libintl` subproject) как shared. **Исправлено** commit 261c7d9 —
+   добавлен `-Ddefault_library=static` в meson setup для glib.
+6. **Устройство немедленно откачено** к старому рабочему бандлу
+   (`/Applications/A5VM.app.old` → обратно в `/Applications/A5VM.app`,
+   `uicache -p` повторно), чтобы не оставлять на телефоне гарантированно
+   падающее приложение. Сломанный бандл сохранён как
+   `/Applications/A5VM.app.broken` на случай, если пригодится для сравнения.
+7. Commit 261c7d9 запушен, ждём зелёный CI (главное — что
+   `libqemu-system-i386.dylib` после фикса больше НЕ должен содержать ни
+   одной ссылки на `/Users/runner/...` в списке зависимостей), потом
+   повторить шаги 1-4 с новым artifact.
+
+Вывод: CI compile+link — необходимая, но недостаточная проверка для этого
+проекта. Компоновка ELF/Mach-O символов совпадает даже при сломанном
+install_name графе (компоновщик резолвит символы на уровне сборки, а не
+физического пути на диске); ТОЛЬКО реальный dyld-запуск на устройстве (или
+хотя бы `su mobile -c '... timeout N .../A5VM'` без полного UIKit) ловит
+подобные баги. Следующему агенту: держать этот SSH-based smoke test
+(dyld-only, без нужды в реальном SpringBoard-запуске) как штатный шаг после
+каждого нового QEMU-related CI-прогона, прежде чем считать что-либо
+"собрано и готово".
 
 Windows 98 boot image уже загружен на телефон:
 
@@ -232,12 +288,27 @@ cross-build, iOS ARMv7 library) теперь зелёная.
     -fno-builtin-sincos -fno-builtin-exp10 -fno-builtin-pow`. Важно:
     `-fno-builtin-sincos` одной не хватает — в коде нет буквального вызова
     `sincos()`, слияние идёт по отдельным `sin`/`cos`.
+11. **glib собирался shared, а не static** (найдено не CI-логом, а первым
+    реальным device-тестом, см. "Проверенное состояние" выше — CI
+    compile+link физически не может увидеть эту категорию бага). Все
+    остальные autotools-зависимости в скрипте (`libffi`, `pcre2`, `pixman`)
+    уже строятся `--disable-shared --enable-static`; meson-сборка `glib` —
+    единственное исключение, ей не хватало `-Ddefault_library=static`, так
+    что meson по умолчанию собрал shared `libglib`/`libgobject`/`libgio`/
+    `libgthread-2.0.0.dylib` плюс `libintl.8.dylib` от subproject
+    `proxy-libintl` — и `libqemu-system-i386.dylib` слинковался против них
+    по абсолютному пути CI runner'а (`$RUNNER_TEMP/a5vm-qemu-ios-work/...`),
+    которого на устройстве не существует. Добавлен
+    `-Ddefault_library=static` в meson setup.
 
-Всё найдено через полный лог CI (`gh run view --log`, полезно грепать
-`config-host.mak`/`V=1` вывод — в `dump_config_on_failure()` в скрипте уже
-добавлен дамп `CFLAGS`/`QEMU_CXXFLAGS`), НЕ угадыванием — каждая гипотеза
-проверялась либо чтением исходников clang/QEMU, либо явным анализом лога
-перед следующим пушем.
+Пункты 1-10 найдены через полный лог CI (`gh run view --log`, полезно
+грепать `config-host.mak`/`V=1` вывод — в `dump_config_on_failure()` в
+скрипте уже добавлен дамп `CFLAGS`/`QEMU_CXXFLAGS`), НЕ угадыванием —
+каждая гипотеза проверялась либо чтением исходников clang/QEMU, либо явным
+анализом лога перед следующим пушем. Пункт 11 CI в принципе не мог найти
+(компоновка успешна независимо от того, существует ли путь на диске
+физически) — нашёлся только через реальный device-тест, см. "Проверенное
+состояние" выше.
 
 JIT на jailbroken ARMv7 пока не реализован в A5VM; сейчас portable backend —
 обычный interpreter. Сама QEMU-библиотека, впрочем, теперь собирается с
