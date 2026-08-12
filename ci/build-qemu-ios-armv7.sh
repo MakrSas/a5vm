@@ -46,7 +46,18 @@ IOS_LDFLAGS="-target armv7-apple-ios${IOS_MIN_VERSION} -arch armv7 -isysroot $SD
 # whole invocation, so any mismatch between them silently changes which
 # target the probe actually compiles against.
 QEMU_CFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${QEMU_TLS_MIN_VERSION} -fPIC -femulated-tls"
-QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${QEMU_TLS_MIN_VERSION}"
+# The final `make` link step (rules.mak's LINK rule) uses $(CFLAGS)
+# $(QEMU_LDFLAGS), not QEMU_CXXFLAGS -- so -stdlib=libc++ from
+# --extra-cxxflags never reaches it, and the link fails with undefined
+# libc++abi (vtables/RTTI, operator new/delete, the ARM32 SJLJ exception
+# personality routine) plus libSystem math/compiler-rt symbols
+# (___clear_cache, ___exp10, ___sincos_stret) that this unusual
+# old-sysroot/new-toolchain combination does not appear to auto-link by
+# default. -lc++ and an explicit -lSystem here are harmless, standard
+# additions for every QEMU_LDFLAGS use (including configure's C-only
+# probes, which just gain an unused-but-harmless link library, unlike a
+# compile-strategy flag such as -stdlib= that could trip their -Werror).
+QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysroot $SDKROOT -miphoneos-version-min=${QEMU_TLS_MIN_VERSION} -lc++ -lSystem"
 # The iPhoneOS6.1 SDK predates clock_gettime()/CLOCK_MONOTONIC on Apple
 # platforms; force-include a small compat shim ahead of every QEMU
 # translation unit instead of patching the vendored QEMU source (see
