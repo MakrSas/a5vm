@@ -290,6 +290,25 @@ TCG_ARM_TARGET_H="$QEMU_SOURCE/tcg/arm/tcg-target.h"
 perl -0pi -e 's/(#if defined\(CONFIG_IOS_JIT\)\n)(static inline void flush_dcache_range\(uintptr_t start, uintptr_t stop\)\n\{\n)#error "Unimplemented dcache flush function"/$1#include <libkern\/OSCacheControl.h>\n$2    sys_dcache_flush((void *)start, stop - start);/' "$TCG_ARM_TARGET_H"
 grep -q "sys_dcache_flush" "$TCG_ARM_TARGET_H" || { echo "Failed to patch $TCG_ARM_TARGET_H" >&2; exit 1; }
 
+# TEMPORARY diagnostic only (not a fix): a device smoke test (raw `su
+# mobile -c '.../A5VM'`, no SpringBoard involved -- see HANDOFF.md's
+# "Первый реальный device-тест") hit `assert((isize & (isize - 1)) ==
+# 0)` in util/cacheinfo.c's constructor, on the real iPhone 4S, before
+# main() even runs. `sysctl hw.cachelinesize` on that same device
+# reports a clean 32 (power of two) from the command line, so whatever
+# sys_cache_info()'s sysctlbyname("hw.cachelinesize", ...) call actually
+# observes in-process must differ from that -- print what it sees so
+# the next device test shows the real number instead of guessing at a
+# fix blind. Remove this once the actual value is known and the real
+# fix (or lack of one -- it may turn out to be sysctlbyname returning
+# non-zero size for some in-process-only reason and needing len/rc
+# checked, not the value itself) is in place.
+CACHEINFO_C="$QEMU_SOURCE/util/cacheinfo.c"
+perl -0pi -e 's/(static void sys_cache_info\(int \*isize, int \*dsize\)\n\{\n    \/\* There.s only a single sysctl for both I\/D cache line sizes\.  \*\/\n    long size;\n    size_t len = sizeof\(size\);\n)    if \(!sysctlbyname\("hw\.cachelinesize", &size, &len, NULL, 0\)\) \{\n        \*isize = \*dsize = size;\n    \}\n\}/$1    int rc = sysctlbyname("hw.cachelinesize", \&size, \&len, NULL, 0);\n    fprintf(stderr, "A5VM_DEBUG sys_cache_info: rc=%d errno=%d len=%zu size=%ld\\n", rc, errno, len, size);\n    if (!rc) {\n        *isize = *dsize = size;\n    }\n}/' "$CACHEINFO_C"
+perl -0pi -e 's/(    fallback_cache_info\(&isize, &dsize\);\n)\n    assert/$1\n    fprintf(stderr, "A5VM_DEBUG init_cache_info: isize=%d dsize=%d\\n", isize, dsize);\n\n    assert/' "$CACHEINFO_C"
+grep -q "A5VM_DEBUG sys_cache_info" "$CACHEINFO_C" || { echo "Failed to patch sys_cache_info in $CACHEINFO_C" >&2; exit 1; }
+grep -q "A5VM_DEBUG init_cache_info" "$CACHEINFO_C" || { echo "Failed to patch init_cache_info in $CACHEINFO_C" >&2; exit 1; }
+
 # configure defaults an iOS host to the "libucontext" coroutine backend
 # (native Darwin ucontext is skipped entirely for the whole Darwin family
 # by configure's own probe, and --with-coroutine=ucontext hard-errors
