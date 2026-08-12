@@ -267,25 +267,36 @@ bridge. Значит argv, который будет строить будущи
 
 Что осталось для реальной интеграции в приоритете 3:
 
-1. Собрать argv из конфигурации машины (`_machine` dictionary в
-   `A5VMViewController.m`: `ram`, `architecture`, `mediaPath`/`diskImage`)
-   — примерно `-M pc -m <ram MB> -vga std -drive file=...,if=ide
-   -boot order=c` и т.п.; сейчас `ram` хранится строкой вида "640 KB",
-   нужен парсинг в число.
-2. Решить, какие profiles (Windows/i386, ISO media) идут через
-   `A5VMQemuBridge`, а какие остаются на portable interpreter — сейчас
-   development происходит полностью раздельно, `A5VMViewController`
-   ничего не знает про bridge.
-3. `A5VMDisplayView` умеет только текстовый VGA 80x25 (`setTextBuffer:`);
-   для растрового QEMU-экрана нужен новый режим — либо новый метод типа
-   `setFramebufferImage:`, либо отдельный view.
+1. ~~Собрать argv из конфигурации машины.~~ **Готово** —
+   `+[A5VMQemuBridge argumentsWithRAMMegabytes:driveImagePath:isISO:]`
+   (commit 9dde5d2). RAM зажат в [16, 512] MB (не доверяем строке из
+   конфига напрямую — `qemu_init()` делает `exit()` всего процесса на
+   неприемлемо маленьком `-m`). `-display none -monitor none -serial none
+   -parallel none` — единственный рабочий выбор в этой сборке (SDL/GTK/
+   curses/VNC/spice/cocoa не скомпилированы), не запасной вариант.
+2. **Осознанно НЕ сделано**: какие profiles идут через
+   `A5VMQemuBridge`, решает `A5VMMachineSettingsViewController.m`'s
+   `runMachine:` — сейчас там жёсткий блок "ISO needs QEMU" (алерт,
+   `return`, до `A5VMViewController` дело не доходит). Не убирал его
+   специально: замена safe-сообщения на попытку реального (ещё ни разу
+   не запущенного на устройстве) QEMU-boot — это продуктовое решение с
+   риском крэша при первом же launch, а не просто "доделать код". Нужно
+   явное решение владельца, когда переключать, или сначала подтвердить
+   на устройстве базовый сценарий (`qemu_init()` с простым argv не
+   падает) отдельно от основного пользовательского флоу.
+3. ~~Растровый режим A5VMDisplayView.~~ **Готово** — `-setFramebufferImage:`
+   (commit 2215158), сосуществует с `-setTextBuffer:` (последний
+   вызванный режим побеждает).
 4. Подключить Run/Pause/Reset/Power к `-pause`/`-resume`/`-requestReset`/
    `-requestPowerDown` вместо текущей NSTimer-based `runSlice:` логики,
-   когда VM работает через bridge.
-5. Реальный device-тест: устанавливает ли `A5VM.app` с dylib внутри без
+   когда VM работает через bridge — упирается в пункт 2 (нет пути,
+   которым `A5VMViewController` вообще узнаёт, что эта VM — QEMU, а не
+   portable interpreter).
+5. Реальный device-тест: устанавливается ли `A5VM.app` с dylib внутри без
    краша при запуске (проверяет `install_name_tool -id
    @executable_path/...` из `ci/build-qemu-ios-armv7.sh` и линковку
-   Makefile.ios), и не падает ли `qemu_init()` с валидным argv.
+   Makefile.ios), и не падает ли `qemu_init()` с валидным argv из пункта 1.
+   Владелец предложил root-доступ по SSH для этого теста.
 
 ## Git
 
@@ -349,12 +360,15 @@ Portable core CI build:
    в `A5VM.app` перед упаковкой. Ничего его пока не грузит/не вызывает.
 3. Сделать Objective-C/C bridge: dedicated pthread, lifecycle, VGA framebuffer,
    keyboard/scancode callback и ошибки QMP. **Класс написан и линкуется**
-   (`app/A5VMQemuBridge.h/.m`, commit cb30793+15eb0ff) — pthread с
+   (`app/A5VMQemuBridge.h/.m`, commit cb30793+15eb0ff+9dde5d2) — pthread с
    `qemu_init`/`qemu_main_loop`/`qemu_cleanup`, DisplayChangeListener для
    экрана, `qemu_input_event_send_key_qcode` для клавиатуры,
    `vm_start`/`vm_stop`/`qemu_system_reset_request`/
-   `qemu_system_powerdown_request` для lifecycle. **НЕ подключён к UI** и
-   **НЕ проверен на устройстве** — см. раздел "ObjC/C bridge" выше для
+   `qemu_system_powerdown_request` для lifecycle,
+   `+argumentsWithRAMMegabytes:driveImagePath:isISO:` для сборки argv.
+   `A5VMDisplayView` теперь умеет и растровый режим
+   (`-setFramebufferImage:`, commit 2215158), не только текстовый 80x25.
+   **НЕ подключён к UI** и **НЕ проверен на устройстве** — см. раздел "ObjC/C bridge" выше для
    точного списка оставшегося (argv из конфига машины, растровый режим
    A5VMDisplayView, wiring кнопок, device-тест).
 4. Переключить Windows ISO path на QEMU backend.
