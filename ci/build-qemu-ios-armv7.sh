@@ -95,6 +95,25 @@ if [ -z "$QEMU_CXX_STD_INCLUDE" ]; then
     echo "::warning::No libc++ v1/cmath found under $MODERN_IPHONEOS_SDK, $XCODE_DEVELOPER_DIR or $SDKROOT" >&2
 fi
 QEMU_CXXFLAGS_EXTRA="-stdlib=libc++${QEMU_CXX_STD_INCLUDE:+ -isystem $QEMU_CXX_STD_INCLUDE}"
+# ___exp10/___sincos_stret: for this target, Apple's compiler recognizes
+# patterns like pow(10, x) or adjacent sin(x)/cos(x) calls on the same
+# argument and rewrites them to Apple-renamed libm symbols with a
+# different (for sincos, struct-return "stret") ABI -- available on this
+# SDK's real-world successors, but postdating iPhoneOS6.1.sdk's stubs
+# just like clock_gettime and fdopendir. Keep the plain, always-linkable
+# pow/sin/cos calls instead of letting the compiler substitute symbols
+# this SDK's linker stubs do not know about.
+QEMU_CFLAGS="$QEMU_CFLAGS -fno-builtin-sincos -fno-builtin-exp10 -fno-builtin-pow"
+# ___clear_cache: __builtin___clear_cache (flush_icache_range() in
+# tcg/arm/tcg-target.h, needed for JIT-generated ARM code to actually be
+# visible to the icache) lowers to a call to a runtime "__clear_cache"
+# symbol that neither libSystem nor an auto-linked compiler-rt archive
+# provides for this armv7-apple-ios9.0/iPhoneOS6.1.sdk combination --
+# same class of gap again. Provide it directly (see
+# qemu-ios-libc-compat.c) rather than guess which compiler-rt archive to
+# link, and feed the resulting object straight to the final link.
+"$CC" $QEMU_CFLAGS -c "$SCRIPT_DIR/qemu-ios-libc-compat.c" -o "$WORK_DIR/qemu-ios-libc-compat.o"
+QEMU_LDFLAGS="$QEMU_LDFLAGS $WORK_DIR/qemu-ios-libc-compat.o"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
 export RANLIB="${RANLIB:-$(xcrun --sdk iphoneos --find ranlib)}"
 export STRIP="${STRIP:-$(xcrun --sdk iphoneos --find strip)}"
