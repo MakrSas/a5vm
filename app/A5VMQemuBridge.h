@@ -62,6 +62,25 @@ typedef enum {
 @property (nonatomic, readonly) BOOL isRunning;
 
 /*
+ * Builds a plain PC (-M pc) argv for -startWithArguments: from a
+ * resolved, already-existing absolute file path and a RAM size. No
+ * QEMU-side display/monitor/serial/parallel backends are requested (we
+ * supply the display ourselves via a DisplayChangeListener, and none of
+ * QEMU's own UI backends are compiled into this build anyway --
+ * ci/build-qemu-ios-armv7.sh disables sdl/gtk/curses/vnc/spice/cocoa/
+ * opengl -- so "none" is not a fallback here, it is the only working
+ * choice). ramMegabytes is clamped to a conservative [16, 512] range:
+ * QEMU rejects (and qemu_init() exit()s the whole process for) a -m
+ * value it considers unusably small, and this build has not been
+ * exercised with any particular value, so staying inside SeaBIOS's
+ * long-established comfort zone is safer than trusting a value derived
+ * from a machine's stored, freeform RAM string.
+ */
++ (NSArray *)argumentsWithRAMMegabytes:(NSInteger)ramMegabytes
+                         driveImagePath:(NSString *)imagePath
+                                  isISO:(BOOL)isISO; /* of NSString */
+
+/*
  * Starts QEMU on a background thread with the given command-line
  * arguments (do not include argv[0]; a placeholder program name is
  * added automatically). Returns immediately; -qemuBridge:didFailWithMessage:

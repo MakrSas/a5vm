@@ -260,6 +260,26 @@ static void *A5VMQemuThreadEntry(void *context) {
 
 @synthesize delegate = _delegate;
 
++ (NSArray *)argumentsWithRAMMegabytes:(NSInteger)ramMegabytes
+                         driveImagePath:(NSString *)imagePath
+                                  isISO:(BOOL)isISO {
+    if (ramMegabytes < 16) ramMegabytes = 16;
+    if (ramMegabytes > 512) ramMegabytes = 512;
+    NSString *driveArgument = [NSString stringWithFormat:@"file=%@,if=ide,%@",
+                               imagePath, isISO ? @"media=cdrom" : @"media=disk"];
+    return [NSArray arrayWithObjects:
+            @"-M", @"pc",
+            @"-m", [NSString stringWithFormat:@"%ld", (long)ramMegabytes],
+            @"-vga", @"std",
+            @"-boot", isISO ? @"order=d" : @"order=c",
+            @"-drive", driveArgument,
+            @"-display", @"none",
+            @"-monitor", @"none",
+            @"-serial", @"none",
+            @"-parallel", @"none",
+            nil];
+}
+
 - (BOOL)isRunning {
     return _running;
 }
