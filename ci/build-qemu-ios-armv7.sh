@@ -397,3 +397,20 @@ cp "$QEMU_LIBRARY" "$OUT_DIR/"
 cp -R "$BUILD_DIR/pc-bios" "$OUT_DIR/pc-bios"
 cp "$QEMU_SOURCE/COPYING" "$OUT_DIR/QEMU-COPYING"
 file "$OUT_DIR/libqemu-system-i386.dylib"
+
+# Standalone qemu_init()/qemu_main_loop() device smoke test (see
+# ci/qemu-ios-init-smoketest.c) -- links against the exact dylib just
+# finished above, from the same directory it will ship in, so it picks
+# up the @executable_path/libqemu-system-i386.dylib LC_LOAD_DYLIB entry
+# the install_name_tool call above just set, the same way A5VM itself
+# does via Makefile.ios. Not part of the app; copied into the artifact
+# purely so it can be scp'd to a device and run manually over SSH.
+$CC $QEMU_CFLAGS -o "$OUT_DIR/qemu-ios-init-smoketest" \
+    "$SCRIPT_DIR/qemu-ios-init-smoketest.c" \
+    $QEMU_LDFLAGS -L"$OUT_DIR" -lqemu-system-i386
+# Same false-iOS-9.0-minimum problem the dylib had above (compiled with
+# QEMU_CFLAGS/QEMU_LDFLAGS to satisfy the TLS gate, see
+# QEMU_TLS_MIN_VERSION), and the same fix.
+xcrun --sdk iphoneos vtool -set-build-version ios "$IOS_MIN_VERSION" "$IOS_SDK_VERSION" \
+    -replace -output "$OUT_DIR/qemu-ios-init-smoketest" "$OUT_DIR/qemu-ios-init-smoketest"
+file "$OUT_DIR/qemu-ios-init-smoketest"
