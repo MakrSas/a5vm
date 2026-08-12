@@ -221,6 +221,18 @@ CFLAGS="$IOS_CFLAGS"
 # without USB_STORAGE_MTP pre-listed there.
 echo "CONFIG_USB_STORAGE_MTP=n" >> "$QEMU_SOURCE/default-configs/i386-softmmu.mak"
 
+# tcg/arm/tcg-target.h's flush_dcache_range() -- needed to make freshly
+# JIT-generated ARM code actually visible to the icache -- is a stub for
+# CONFIG_IOS_JIT (which configure always turns on for $ios = yes, no
+# opt-out flag exists): its body is a bare #error, apparently left
+# unfinished upstream. Fill in the standard Darwin primitive for this
+# (sys_dcache_flush, from libkern/OSCacheControl.h, available on iOS
+# since long before iOS 6) rather than disabling CONFIG_IOS_JIT wholesale
+# and losing whatever else it gates in the surrounding TCG/JIT plumbing.
+TCG_ARM_TARGET_H="$QEMU_SOURCE/tcg/arm/tcg-target.h"
+perl -0pi -e 's/(#if defined\(CONFIG_IOS_JIT\)\n)(static inline void flush_dcache_range\(uintptr_t start, uintptr_t stop\)\n\{\n)#error "Unimplemented dcache flush function"/$1#include <libkern\/OSCacheControl.h>\n$2    sys_dcache_flush((void *)start, stop - start);/' "$TCG_ARM_TARGET_H"
+grep -q "sys_dcache_flush" "$TCG_ARM_TARGET_H" || { echo "Failed to patch $TCG_ARM_TARGET_H" >&2; exit 1; }
+
 # configure defaults an iOS host to the "libucontext" coroutine backend
 # (native Darwin ucontext is skipped entirely for the whole Darwin family
 # by configure's own probe, and --with-coroutine=ucontext hard-errors
