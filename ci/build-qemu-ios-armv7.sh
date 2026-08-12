@@ -54,14 +54,21 @@ QEMU_LDFLAGS="-target armv7-apple-ios${QEMU_TLS_MIN_VERSION} -arch armv7 -isysro
 QEMU_CFLAGS="$QEMU_CFLAGS -include $SCRIPT_DIR/qemu-ios-clock-compat.h"
 export CC="${CC:-$(xcrun --sdk iphoneos --find clang)}"
 export CXX="${CXX:-$CC}"
-# libc++'s headers live under the *toolchain* (Xcode_26.6.app/.../usr/include/c++/v1),
-# not under any particular target SDK, but clang's automatic libc++ header
-# search apparently does not kick in for this ancient, non-Xcode-bundled
-# iPhoneOS6.1 sysroot -- QEMU's disas/libvixl (a real C++ component, pulled
-# in by any ARM host --cpu regardless of --target-list) fails to find
-# <cmath> otherwise.  Point at the toolchain's own copy explicitly.
-CXX_TOOLCHAIN_USR="$(dirname "$(dirname "$CC")")"
-QEMU_CXXFLAGS_EXTRA="-stdlib=libc++ -isystem $CXX_TOOLCHAIN_USR/include/c++/v1"
+# clang's automatic libc++ header search apparently does not kick in for
+# this ancient, non-Xcode-bundled iPhoneOS6.1 sysroot -- QEMU's
+# disas/libvixl (a real C++ component, pulled in by any ARM host --cpu
+# regardless of --target-list) fails to find <cmath> otherwise, even with
+# -stdlib=libc++ passed via --extra-cxxflags. Rather than guess a single
+# hardcoded layout (libc++ has moved between toolchain- and SDK-relative
+# locations across Xcode versions), search both the toolchain and the SDK
+# for the real cmath and point -isystem at whichever actually has it.
+XCODE_DEVELOPER_DIR="$(xcode-select -p)"
+QEMU_CXX_STD_INCLUDE="$(find "$XCODE_DEVELOPER_DIR" "$SDKROOT" -path '*/c++/v1/cmath' -print -quit 2>/dev/null)"
+QEMU_CXX_STD_INCLUDE="${QEMU_CXX_STD_INCLUDE%/cmath}"
+if [ -z "$QEMU_CXX_STD_INCLUDE" ]; then
+    echo "::warning::No libc++ v1/cmath found under $XCODE_DEVELOPER_DIR or $SDKROOT" >&2
+fi
+QEMU_CXXFLAGS_EXTRA="-stdlib=libc++${QEMU_CXX_STD_INCLUDE:+ -isystem $QEMU_CXX_STD_INCLUDE}"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
 export RANLIB="${RANLIB:-$(xcrun --sdk iphoneos --find ranlib)}"
 export STRIP="${STRIP:-$(xcrun --sdk iphoneos --find strip)}"
@@ -82,6 +89,10 @@ dump_config_on_failure() {
             echo "===== $log ====="
             tail -n 80 "$log"
         done < <(find "$WORK_DIR" -name config.log -type f -print)
+        if [ -f "$BUILD_DIR/config-host.mak" ]; then
+            echo "===== $BUILD_DIR/config-host.mak (CFLAGS/CXXFLAGS) ====="
+            grep -E '^(CFLAGS|CXXFLAGS|QEMU_CFLAGS|QEMU_CXXFLAGS)=' "$BUILD_DIR/config-host.mak"
+        fi
     fi
     exit "$status"
 }
@@ -246,7 +257,7 @@ LDFLAGS="$QEMU_LDFLAGS -L$DEPS_DIR/lib" \
       --extra-cflags="$QEMU_CFLAGS -I$DEPS_DIR/include" \
       --extra-cxxflags="$QEMU_CXXFLAGS_EXTRA" \
       --extra-ldflags="$QEMU_LDFLAGS -L$DEPS_DIR/lib"
-make -j2 i386-softmmu/all
+make -j2 V=1 i386-softmmu/all
 popd >/dev/null
 
 QEMU_LIBRARY="$BUILD_DIR/i386-softmmu/libqemu-system-i386.dylib"
