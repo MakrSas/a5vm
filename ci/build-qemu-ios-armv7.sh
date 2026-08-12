@@ -236,11 +236,24 @@ cpu = 'armv7'
 endian = 'little'
 EOF
     pushd "$SRC_DIR/glib-2.76.6" >/dev/null
+    # Every other dependency in this script is built static-only
+    # (build_autotools/build_autotools_install_only pass
+    # --disable-shared --enable-static) so nothing but libqemu-system-i386.dylib
+    # itself needs bundling or install_name fixing.  glib is the one
+    # exception: meson defaults to building shared libraries, and without
+    # -Ddefault_library=static that produces libglib/libgobject/libgio/
+    # libgthread-2.0.0.dylib plus the proxy-libintl subproject's
+    # libintl.8.dylib, all four (five) still pointing at this CI runner's
+    # own $WORK_DIR when the finished libqemu-system-i386.dylib links
+    # against them -- a path that does not exist on the device, so dyld
+    # refuses to load the library at all outside this runner. Force
+    # static here for the same reason the other deps already are.
     python3 -m mesonbuild.mesonmain setup build --cross-file "$WORK_DIR/ios-armv7-cross.ini" \
         --prefix="$DEPS_DIR" -Dtests=false -Dinstalled_tests=false \
         -Dglib_assert=false -Dglib_checks=false -Dman=false \
         -Dgtk_doc=false -Ddtrace=false -Dsystemtap=false \
-        -Dlibmount=disabled -Dselinux=disabled -Dxattr=false
+        -Dlibmount=disabled -Dselinux=disabled -Dxattr=false \
+        -Ddefault_library=static
     python3 -m mesonbuild.mesonmain compile -C build
     python3 -m mesonbuild.mesonmain install -C build
     touch .a5vm-built
