@@ -52,6 +52,7 @@ jobs:
   ios-armv7:
     name: iOS 6 ARMv7 tool
     runs-on: macos-latest
+    needs: qemu-ios-armv7
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -93,8 +94,26 @@ jobs:
           cp app/Info.plist build/ios6-gui/A5VM.app/Info.plist
           rm -rf build/ios6-gui/A5VM.app/A5VM.dSYM
           ldid -S build/ios6-gui/A5VM.app/A5VM
-          /usr/bin/zip -qry build/a5vm-ios6-gui.zip build/ios6-gui/A5VM.app
           file build/ios6-gui/A5VM.app/A5VM
+
+      - name: Download QEMU iOS library artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: a5vm-qemu-ios-armv7-${{ github.sha }}
+          path: build/qemu-ios-armv7
+
+      - name: Bundle QEMU library into A5VM.app
+        run: |
+          test -f build/qemu-ios-armv7/libqemu-system-i386.dylib
+          cp build/qemu-ios-armv7/libqemu-system-i386.dylib build/ios6-gui/A5VM.app/
+          cp -R build/qemu-ios-armv7/pc-bios build/ios6-gui/A5VM.app/pc-bios
+          cp build/qemu-ios-armv7/QEMU-COPYING build/ios6-gui/A5VM.app/QEMU-COPYING
+          ldid -S build/ios6-gui/A5VM.app/libqemu-system-i386.dylib
+          file build/ios6-gui/A5VM.app/libqemu-system-i386.dylib
+
+      - name: Package iOS 6 GUI artifact
+        run: |
+          /usr/bin/zip -qry build/a5vm-ios6-gui.zip build/ios6-gui/A5VM.app
 
       - name: Upload iOS 6 GUI artifact
         uses: actions/upload-artifact@v4
