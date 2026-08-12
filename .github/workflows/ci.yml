@@ -84,9 +84,17 @@ jobs:
           cp -R "$SDK" "$THEOS/sdks/iPhoneOS6.1.sdk"
           echo "THEOS=$THEOS" >> "$GITHUB_ENV"
 
+      - name: Download QEMU iOS library artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: a5vm-qemu-ios-armv7-${{ github.sha }}
+          path: build/qemu-ios-armv7
+
       - name: Build iOS 6 GUI app
         run: |
-          make -f Makefile.ios THEOS="$THEOS" clean all
+          test -f build/qemu-ios-armv7/libqemu-system-i386.dylib
+          make -f Makefile.ios THEOS="$THEOS" \
+            A5VM_QEMU_LIBDIR="$GITHUB_WORKSPACE/build/qemu-ios-armv7" clean all
           app=$(find .theos -type d -name A5VM.app -print -quit)
           test -n "$app"
           mkdir -p build/ios6-gui
@@ -96,15 +104,8 @@ jobs:
           ldid -S build/ios6-gui/A5VM.app/A5VM
           file build/ios6-gui/A5VM.app/A5VM
 
-      - name: Download QEMU iOS library artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: a5vm-qemu-ios-armv7-${{ github.sha }}
-          path: build/qemu-ios-armv7
-
       - name: Bundle QEMU library into A5VM.app
         run: |
-          test -f build/qemu-ios-armv7/libqemu-system-i386.dylib
           cp build/qemu-ios-armv7/libqemu-system-i386.dylib build/ios6-gui/A5VM.app/
           cp -R build/qemu-ios-armv7/pc-bios build/ios6-gui/A5VM.app/pc-bios
           cp build/qemu-ios-armv7/QEMU-COPYING build/ios6-gui/A5VM.app/QEMU-COPYING

@@ -9,6 +9,7 @@ A5VM_FILES = app/main.m app/A5VMAppDelegate.m app/A5VMMachinesViewController.m \
              app/A5VMViewController.m \
              app/A5VMIconButton.m \
              app/A5VMDiskImageViewController.m app/A5VMDisplayView.m \
+             app/A5VMQemuBridge.m \
              src/memory.c \
              src/cpu8086.c src/cpu386.c src/vga_text.c src/keyboard.c src/floppy.c src/disk.c src/ide.c src/bios.c src/bios386.c \
              src/pic8259.c src/pit8253.c \
@@ -16,5 +17,18 @@ A5VM_FILES = app/main.m app/A5VMAppDelegate.m app/A5VMMachinesViewController.m \
 A5VM_FRAMEWORKS = UIKit CoreGraphics
 A5VM_CFLAGS = -Iinclude -std=c11
 A5VM_INFO_PLIST = app/Info.plist
+
+# A5VM_QEMU_LIBDIR points at a directory holding libqemu-system-i386.dylib
+# (the CI-built iOS ARMv7 QEMU library, see ci/build-qemu-ios-armv7.sh and
+# docs/QEMU_BACKEND.md) so A5VMQemuBridge.m can link against QEMU's C entry
+# points. The dylib itself already has its own install name set to
+# @executable_path/libqemu-system-i386.dylib (see the install_name_tool
+# call in ci/build-qemu-ios-armv7.sh) so no separate rpath is needed here
+# -- A5VM inherits that path as its own LC_LOAD_DYLIB entry, and ci.yml's
+# "Bundle QEMU library into A5VM.app" step puts the dylib right next to
+# the built executable at that same path at runtime.
+ifdef A5VM_QEMU_LIBDIR
+A5VM_LDFLAGS += -L$(A5VM_QEMU_LIBDIR) -lqemu-system-i386
+endif
 
 include $(THEOS_MAKE_PATH)/application.mk

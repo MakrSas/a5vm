@@ -343,6 +343,18 @@ test -f "$QEMU_LIBRARY"
 # that (falsely) claims to require iOS 9.
 xcrun --sdk iphoneos vtool -set-build-version ios "$IOS_MIN_VERSION" "$IOS_SDK_VERSION" \
     -replace -output "$QEMU_LIBRARY" "$QEMU_LIBRARY"
+# QEMU's configure never passes -install_name for the shared lib, so the
+# linker recorded this CI runner's absolute build path (LC_ID_DYLIB) as
+# the library's own identity -- a path that will not exist on the phone.
+# Any app linking against it as built would fail to load at launch with
+# that path baked into its LC_LOAD_DYLIB. Point it at the app bundle
+# instead: A5VM.app ships this dylib right next to the main executable
+# (see ci.yml's "Bundle QEMU library into A5VM.app" step). Whatever
+# consumes this library at link time (A5VM itself, via Makefile.ios)
+# inherits this exact string as its own LC_LOAD_DYLIB entry -- not
+# wherever it happened to be linked from -- so @executable_path here is
+# sufficient on its own; the consumer needs no separate -rpath.
+install_name_tool -id "@executable_path/libqemu-system-i386.dylib" "$QEMU_LIBRARY"
 cp "$QEMU_LIBRARY" "$OUT_DIR/"
 cp -R "$BUILD_DIR/pc-bios" "$OUT_DIR/pc-bios"
 cp "$QEMU_SOURCE/COPYING" "$OUT_DIR/QEMU-COPYING"
