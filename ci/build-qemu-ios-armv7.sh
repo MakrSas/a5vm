@@ -58,15 +58,21 @@ export CXX="${CXX:-$CC}"
 # this ancient, non-Xcode-bundled iPhoneOS6.1 sysroot -- QEMU's
 # disas/libvixl (a real C++ component, pulled in by any ARM host --cpu
 # regardless of --target-list) fails to find <cmath> otherwise, even with
-# -stdlib=libc++ passed via --extra-cxxflags. Rather than guess a single
-# hardcoded layout (libc++ has moved between toolchain- and SDK-relative
-# locations across Xcode versions), search both the toolchain and the SDK
-# for the real cmath and point -isystem at whichever actually has it.
+# -stdlib=libc++ passed via --extra-cxxflags. Modern Xcode bundles a
+# separate usr/include/c++/v1 *per platform SDK* rather than once under
+# the shared toolchain, so search broadly for the real cmath and use
+# whichever location actually has it -- but search the Xcode-bundled
+# iPhoneOS SDK first specifically, before any other platform's SDK
+# (AppleTVOS, WatchOS, MacOSX, ...) also sitting under the same Developer
+# directory: the first build of this fix picked AppleTVOS.sdk's copy
+# purely because it happened to sort first, which is wrong for an ARM
+# iOS binary even though iPhoneOS26.0.sdk was sitting right there too.
 XCODE_DEVELOPER_DIR="$(xcode-select -p)"
-QEMU_CXX_STD_INCLUDE="$(find "$XCODE_DEVELOPER_DIR" "$SDKROOT" -path '*/c++/v1/cmath' -print -quit 2>/dev/null)"
+MODERN_IPHONEOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+QEMU_CXX_STD_INCLUDE="$(find "$MODERN_IPHONEOS_SDK" "$XCODE_DEVELOPER_DIR" "$SDKROOT" -path '*/c++/v1/cmath' -print -quit 2>/dev/null)"
 QEMU_CXX_STD_INCLUDE="${QEMU_CXX_STD_INCLUDE%/cmath}"
 if [ -z "$QEMU_CXX_STD_INCLUDE" ]; then
-    echo "::warning::No libc++ v1/cmath found under $XCODE_DEVELOPER_DIR or $SDKROOT" >&2
+    echo "::warning::No libc++ v1/cmath found under $MODERN_IPHONEOS_SDK, $XCODE_DEVELOPER_DIR or $SDKROOT" >&2
 fi
 QEMU_CXXFLAGS_EXTRA="-stdlib=libc++${QEMU_CXX_STD_INCLUDE:+ -isystem $QEMU_CXX_STD_INCLUDE}"
 export AR="${AR:-$(xcrun --sdk iphoneos --find ar)}"
