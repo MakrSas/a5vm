@@ -3,7 +3,7 @@
 Дата: 2026-08-12  
 Репозиторий: https://github.com/MakrSas/a5vm  
 Ветка: agent/initial-a5vm  
-HEAD: ea71a3d — Wire A5VMQemuBridge into A5VMViewController
+HEAD: d979528 — Fix cacheinfo.c's real bug: validate sysctlbyname's len, not just rc
 
 ## Цель
 
@@ -66,11 +66,15 @@ qemu_console_surface, четыре pixman_image_get_* функции) совпа
 самодостаточный, скомпилированный, но не подключённый класс (см. раздел
 "ObjC/C bridge" ниже и приоритет 3).
 
-Установленная на устройстве GUI-сборка ещё СТАРАЯ (commit 9ca7fd1, без QEMU
-внутри):
+Установленная на устройстве GUI-сборка (после device-теста ниже, commit
+d979528, С QEMU внутри и обоими найденными багами исправленными):
 
-    /Applications/A5VM.app/A5VM       202160 bytes
-    /Applications/A5VM.app/Info.plist 1057 bytes
+    /Applications/A5VM.app/A5VM                        213072 bytes
+    /Applications/A5VM.app/Info.plist                  1057 bytes
+    /Applications/A5VM.app/libqemu-system-i386.dylib   15317136 bytes
+
+Предыдущий рабочий бандл (commit 9ca7fd1, без QEMU) сохранён как
+`/Applications/A5VM.app.old` на случай отката.
 
 Actions run 31594064160 (commit ea71a3d) — **весь pipeline снова зелёный**
 после того, как `A5VMQemuBridge` полностью подключён к `A5VMViewController`
@@ -130,20 +134,80 @@ Actions run 31594064160 (commit ea71a3d) — **весь pipeline снова зе
    `uicache -p` повторно), чтобы не оставлять на телефоне гарантированно
    падающее приложение. Сломанный бандл сохранён как
    `/Applications/A5VM.app.broken` на случай, если пригодится для сравнения.
-7. Commit 261c7d9 запушен, ждём зелёный CI (главное — что
-   `libqemu-system-i386.dylib` после фикса больше НЕ должен содержать ни
-   одной ссылки на `/Users/runner/...` в списке зависимостей), потом
-   повторить шаги 1-4 с новым artifact.
+7. Commit 261c7d9 запушен и позеленел (run 31595559792). Локальная проверка
+   (Python `lief` на скачанном артефакте, без macOS) подтвердила: у
+   `libqemu-system-i386.dylib` в зависимостях остались только чистые системные
+   пути (`CoreFoundation`, `libresolv`, `libc++`, `libSystem`, `libz`,
+   `libiconv`) — ни одной ссылки на `/Users/runner/...`. Задеплоено заново —
+   dyld-часть теперь полностью чистая (`DYLD_PRINT_LIBRARIES=1` показывает
+   каждую зависимость успешно найденной).
+8. **Тут же нашёлся ВТОРОЙ настоящий баг**, уже не dyld, а runtime: краш
+   `Assertion failed: ((isize & (isize - 1)) == 0), function
+   init_cache_info, file .../util/cacheinfo.c, line 188` — падает ДО main(),
+   в `__attribute__((constructor))` самого QEMU (не в коде A5VM). Устройство
+   немедленно откачено обратно на предыдущий рабочий бандл тем же
+   move-based механизмом.
+9. Вместо угадывания добавлена временная диагностика (`fprintf(stderr, ...)`
+   в `sys_cache_info`/`init_cache_info` через `perl -0pi` патч в
+   `ci/build-qemu-ios-armv7.sh`, commit c4024fc), задеплоена на **отдельный
+   путь** `/var/mobile/A5VM-diag.app` (НЕ поверх живого `/Applications/A5VM.app`
+   — `@executable_path` резолвится относительно фактического расположения
+   бинарника, так что сайд-путь тестируется один-в-один с реальным), и
+   удалена сразу после теста. Вывод раскрыл точную причину:
+
+       A5VM_DEBUG sys_cache_info: rc=0 errno=2 len=0 size=804402612
+       A5VM_DEBUG init_cache_info: isize=804402612 dsize=804402612
+
+   `sysctlbyname("hw.cachelinesize", &size, &len, NULL, 0)` вернула rc=0
+   ("успех"), но `len=0` — то есть НИЧЕГО не записала в `size`, которая
+   осталась мусором со стека. Апстримный код в `cacheinfo.c` проверяет
+   только `rc`, не `len`. Проверено дополнительно: `sysctl hw.cachelinesize`
+   из шелла от имени того же непривилегированного `mobile` (не root) честно
+   показывает 32 — значит дело не в правах доступа, а именно в поведении
+   `sysctlbyname()` изнутри dylib-constructor'а, вызываемого dyld ДО
+   завершения обычного старта процесса, на этой конкретной старой iOS 6
+   XNU. Точная причина ЭТОЙ разницы не выяснена (и не обязательна для
+   фикса) — сама проверка `rc` без проверки `len` это баг независимо от
+   причины.
+10. **Исправлено по существу** (commit d979528, диагностика убрана):
+    `if (!sysctlbyname(...) && len == sizeof(size))` — теперь короткое/нулевое
+    "успешное" чтение корректно падает через на `fallback_cache_info`'s
+    дефолтные 64 байта (значение, которое сам QEMU уже считает приемлемой
+    догадкой — используется только как hint для granularity кэш-flush/atomics,
+    не для корректности), вместо краша.
+11. CI на commit d979528 позеленел (run 31598213565). Тот же side-path
+    smoke test (`/var/mobile/A5VM-diag.app`, не живой путь) — **больше НЕ
+    падает**: `su mobile -c 'timeout 5 .../A5VM'` дошёл до `RC:124` (timeout
+    сам убил процесс через 5 секунд — то есть процесс всё ещё БЕЖАЛ,
+    застряв в чём-то вроде `UIApplicationMain()`'s run loop без реальной
+    SpringBoard-сессии, а не крашнулся). Обе dyld- и cacheinfo-проблемы
+    подтверждены исправленными.
+12. **Задеплоено на живой путь** `/Applications/A5VM.app` (тем же
+    move-with-`.old`-backup механизмом, `uicache -p` выполнен), и то же
+    самое чистое `RC:124` подтверждено уже на живом бинарнике. `_usesQemu`
+    по-прежнему структурно недостижим (см. пункт 2 в разделе "ObjC/C
+    bridge"), так что при обычном тапе по иконке приложение ведёт себя
+    ТАК ЖЕ, как раньше (portable-интерпретатор) — но теперь это тот же
+    бинарник со встроенной, dyld- и init-verified QEMU dylib внутри.
+    Полноценный SpringBoard-запуск (реальный тап по иконке, что покажет
+    экран) **всё ещё не проверен** — raw-exec smoke test не эквивалентен
+    полному UIKit-запуску (нет window-server сессии), только ловит
+    dyld/constructor-уровневые баги. Следующему агенту или владельцу стоит
+    физически открыть приложение и посмотреть, что происходит, прежде чем
+    считать эту часть окончательно готовой.
 
 Вывод: CI compile+link — необходимая, но недостаточная проверка для этого
 проекта. Компоновка ELF/Mach-O символов совпадает даже при сломанном
 install_name графе (компоновщик резолвит символы на уровне сборки, а не
-физического пути на диске); ТОЛЬКО реальный dyld-запуск на устройстве (или
-хотя бы `su mobile -c '... timeout N .../A5VM'` без полного UIKit) ловит
-подобные баги. Следующему агенту: держать этот SSH-based smoke test
-(dyld-only, без нужды в реальном SpringBoard-запуске) как штатный шаг после
-каждого нового QEMU-related CI-прогона, прежде чем считать что-либо
-"собрано и готово".
+физического пути на диске), и УСПЕШНАЯ линковка ничего не говорит про
+runtime-корректность конструкторов, которые выполняются до main(). ТОЛЬКО
+реальный dyld-запуск на устройстве (хотя бы `su mobile -c '... timeout N
+.../A5VM'` без полного UIKit) ловит оба класса багов, которые тут
+встретились. Следующему агенту: держать этот SSH-based smoke test
+(dyld+constructor-уровня, без нужды в реальном SpringBoard-запуске) как
+штатный шаг после каждого нового QEMU-related CI-прогона, прежде чем
+считать что-либо "собрано и готово" — а полноценный SpringBoard-запуск
+(тап по иконке) остаётся отдельной, ещё не пройденной проверкой.
 
 Windows 98 boot image уже загружен на телефон:
 
@@ -394,20 +458,30 @@ bridge. Значит argv, который будет строить будущи
    floppy-`.dsk`-образа (он написан только для portable-интерпретатора),
    так что `-runDemo:` в QEMU-ветке использует именно `-qemuMediaPath`,
    а не `-bootImagePath`.
-5. Реальный device-тест: устанавливается ли `A5VM.app` с dylib внутри без
-   краша при запуске (проверяет `install_name_tool -id
-   @executable_path/...` из `ci/build-qemu-ios-armv7.sh` и линковку
-   Makefile.ios), и не падает ли `qemu_init()` с валидным argv из пункта 1.
-   Владелец предложил root-доступ по SSH для этого теста. **Единственное,
-   что осталось перед этим тестом** — либо явное решение владельца
-   переключить `runMachine:`'s ISO-гейт, либо изолированный тест
-   `qemu_init()` с валидным argv отдельно от основного UI-флоу (см.
-   пункт 2).
+5. ~~Реальный device-тест: устанавливается ли `A5VM.app` с dylib внутри без
+   краша при запуске.~~ **Частично готово** — см. "Первый реальный
+   device-тест" выше. Устанавливается и загружается dyld без единой ошибки
+   (commit 261c7d9 фикс), constructor-уровневый краш в QEMU's
+   `cacheinfo.c` найден и исправлен (commit d979528), side-path smoke test
+   (`su mobile -c 'timeout 5 .../A5VM'`) проходит чисто (`RC:124` — процесс
+   жив, а не крашнулся). Задеплоено на живой `/Applications/A5VM.app`.
+   **НЕ проверено**: полноценный SpringBoard-запуск (реальный тап по
+   иконке — что покажет экран, крашнется ли UIApplicationMain уже внутри
+   реальной window-server сессии) и `qemu_init()` с валидным argv (всё ещё
+   упирается в пункт 2 — `_usesQemu` структурно недостижим, так что
+   `qemu_init()` физически не вызывается даже сейчас).
 
 ## Git
 
-Последние важные commits (bridge wiring + argv/raster display, все на
-agent/initial-a5vm):
+Последние важные commits (device-verified QEMU dylib: dyld + cacheinfo
+fixes, все на agent/initial-a5vm):
+
+    d979528 Fix cacheinfo.c's real bug: validate sysctlbyname's len, not just rc
+    c4024fc Add temporary diagnostic prints to QEMU's cacheinfo.c constructor
+    261c7d9 Force glib to build static, not shared, for the iOS QEMU dylib
+    314a835 Document first real device test and the glib shared-lib bug it found
+
+Перед этим — bridge wiring + argv/raster display:
 
     ea71a3d Wire A5VMQemuBridge into A5VMViewController
     798b983 Update handoff: argv builder and raster display mode done
@@ -467,25 +541,66 @@ Portable core CI build:
       src/pic8259.c src/pit8253.c src/machine.c src/main.c \
       -o build/a5vm-demo
 
+### Device dyld/constructor smoke test (SSH, без sshpass/expect)
+
+Windows-хост в этой сессии не имел `sshpass`/`expect`; вместо этого —
+Python `paramiko` (уже установлен, `import paramiko`), пароль ТОЛЬКО через
+переменную окружения, никогда в файл:
+
+    A5VM_SSH_PASS='<пароль от владельца>' python script.py
+
+где `script.py` делает `paramiko.SSHClient().connect(host, username="root",
+password=os.environ["A5VM_SSH_PASS"], look_for_keys=False, allow_agent=False)`.
+Для проверки НОВОЙ сборки БЕЗ риска для живого приложения — заливать через
+SFTP не поверх `/Applications/A5VM.app`, а на отдельный путь (например
+`/var/mobile/A5VM-diag.app`; `@executable_path` в install_name резолвится
+относительно фактического расположения бинарника, так что тест на
+сайд-пути эквивалентен живому), затем:
+
+    chmod -R 755 /var/mobile/A5VM-diag.app
+    chown -R mobile:mobile /var/mobile/A5VM-diag.app
+    su mobile -c 'DYLD_PRINT_LIBRARIES=1 timeout 5 /var/mobile/A5VM-diag.app/A5VM' 2>&1
+    echo RC:$?
+
+`RC:124` = процесс ещё жил, когда `timeout` его убил (ожидаемо — нет
+SpringBoard-сессии, приложение просто виснет в run loop) — это ХОРОШИЙ
+результат, означает дошёл до main() без крашей. `RC:133`/`RC:134` = SIGABRT/
+SIGILL, смотри вывод на `dyld: Library not loaded`/`Assertion failed`.
+Локально Mach-O зависимости дилиба можно проверить без macOS/otool через
+Python `lief` (`pip install lief`, уже стоит в этой сессии): `lief.parse(path)
+.libraries` — список путей всех `LC_LOAD_DYLIB`, полезно искать абсолютные
+CI-runner-пути (`/Users/runner/...`), которые на устройстве не существуют.
+
 ## Приоритеты следующему агенту
 
 1. ~~Исправить QEMU ARMv7 iOS 6 TLS без unsafe глобальной подмены.~~ **Готово**
-   (и заодно ещё 11 независимых build-багов после TLS, см. раздел QEMU).
+   (и заодно ещё 10 независимых compile/link-багов после TLS через CI-логи,
+   плюс 1 runtime-баг (cacheinfo.c) через реальный device-тест — 12 всего,
+   см. раздел QEMU).
 2. ~~Получить QEMU dylib artifact и включить его в iOS package.~~ **Готово** —
    `ios-armv7` CI job зависит от `qemu-ios-armv7` и встраивает dylib/pc-bios
    в `A5VM.app` перед упаковкой. Ничего его пока не грузит/не вызывает.
 3. ~~Сделать Objective-C/C bridge: dedicated pthread, lifecycle, VGA framebuffer,
-   keyboard/scancode callback.~~ **Готово на уровне кода** (commit ea71a3d) —
+   keyboard/scancode callback.~~ **Готово на уровне кода, device-verified на
+   dyld+constructor уровне** (commits ea71a3d, 261c7d9, d979528) —
    `app/A5VMQemuBridge.h/.m` полностью подключён к `A5VMViewController`
    (Run/Pause/Reset/Power/keyboard/textField), `A5VMDisplayView` умеет
-   растровый режим. `_usesQemu` остаётся структурно недостижимым (см.
-   "ObjC/C bridge" выше, пункт 2) — **НЕ проверено на устройстве**.
+   растровый режим. На реальном iPhone 4S: dyld резолвит все зависимости
+   чисто, QEMU dylib's constructor (cacheinfo.c) больше не крашится. Живой
+   `/Applications/A5VM.app` теперь ЭТА, dylib-verified сборка. `_usesQemu`
+   остаётся структурно недостижимым (см. "ObjC/C bridge" выше, пункт 2) —
+   **НЕ проверен полноценный SpringBoard-запуск** (тап по иконке — нужно
+   физически посмотреть на экран телефона) и **НЕ вызывался `qemu_init()`**
+   ни разу ни с каким argv.
 4. Переключить Windows ISO path на QEMU backend (снять/ослабить
    `runMachine:`'s "ISO needs QEMU" гейт) — единственный оставшийся шаг
    перед тем, как приоритет 3 станет реально используемым, а не только
    скомпилированным. Требует либо явного решения владельца, либо
    отдельного изолированного device-теста `qemu_init()`.
-5. Проверить DOS и Windows 98 boot image на устройстве; затем Windows 95 ISO.
+5. Проверить DOS и Windows 98 boot image на устройстве (через
+   portable-интерпретатор — независимый от QEMU путь, уже рабочий и уже
+   живой на телефоне; `Win98-SE-Boot.img` уже загружен, см. выше); затем
+   Windows 95 ISO (упирается в пункт 4).
 6. Добавить 68k Macintosh backend, ROM validation и MacOS boot.
 7. После runtime verification улучшать interpreter/JIT performance.
 
