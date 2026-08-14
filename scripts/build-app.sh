@@ -24,16 +24,44 @@ BUNDLE="$OUT_DIR/A5VM.app"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE"
 
+#
+# Компиляция и линковка разделены намеренно.
+#
+# Драйвер clang, увидев -fobjc-arc на команде ЛИНКОВКИ, добавляет к ней
+# libarclite_iphoneos.a — набор совместимости для рантаймов, где ARC ещё не
+# был нативным.  Требует он её при деплоймент-таргете ниже iOS 9, а из Xcode
+# 14 и новее её просто убрали, поэтому сборка падает на
+# «SDK does not contain 'libarclite'».
+#
+# Поднимать деплоймент-таргет ради этого нельзя: тогда clang сочтёт
+# доступным рантайм iOS 9 и вправе будет генерировать вызовы, которых на
+# iOS 6 нет — падало бы уже на устройстве, а не на сборке.  Но и сама
+# libarclite здесь не нужна по существу: нативный ARC есть с iOS 5, а
+# методы индексного доступа — с iOS 6, то есть ровно с нашей версии.
+# Достаточно не сообщать про ARC шагу линковки: объектные файлы уже
+# собраны как надо, а -lobjc добавляется явно, потому что без -fobjc-arc
+# драйвер уже не считает линковку связанной с Objective-C.
+#
+OBJ_DIR="$A5_WORK/app-objects"
+rm -rf "$OBJ_DIR"
+mkdir -p "$OBJ_DIR"
+
 a5_log "компиляция A5VM"
-# -fobjc-arc: для деплоймент-таргета 6.0 clang берёт нативный ARC рантайма
-# (он есть с iOS 5) и не требует libarclite, которую из современных Xcode уже
-# убрали.  Версия рантайма выводится именно из -miphoneos-version-min, поэтому
-# оптимизации вроде objc_alloc, появившиеся позже, сюда не попадают.
+OBJECTS=()
+for source in "$A5_ROOT/app"/*.m; do
+    object="$OBJ_DIR/$(basename "${source%.m}").o"
+    "$A5_CC" $A5_BASE_CFLAGS \
+        -fobjc-arc \
+        -O2 -Wall -Wno-unused-parameter \
+        -I "$A5_ROOT/bridge" \
+        -c "$source" -o "$object"
+    OBJECTS+=("$object")
+done
+
+a5_log "линковка A5VM"
 "$A5_CC" $A5_BASE_CFLAGS \
-    -fobjc-arc \
-    -O2 -Wall -Wno-unused-parameter \
-    -I "$A5_ROOT/bridge" \
-    "$A5_ROOT/app"/*.m \
+    "${OBJECTS[@]}" \
+    -lobjc \
     -framework UIKit \
     -framework Foundation \
     -framework CoreGraphics \
