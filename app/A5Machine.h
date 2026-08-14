@@ -9,6 +9,11 @@
 
 #import <Foundation/Foundation.h>
 
+/// Каталог Documents приложения.  Для приложения из /Applications это
+/// /var/mobile/Documents — то есть туда же, куда образы дисков кладёт
+/// пользователь по SSH.
+extern NSString *A5DocumentsDirectory(void);
+
 /// Идентификаторы шаблонов гостевых ОС.  Значение хранится в config.plist,
 /// поэтому строки менять нельзя без миграции.
 extern NSString *const A5TemplateDOS;

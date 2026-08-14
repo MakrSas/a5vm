@@ -141,11 +141,18 @@ static NSString *const A5KeyAbsolute     = @"usesAbsolutePointer";
 
 #pragma mark - Пути
 
-+ (NSString *)machinesRootPath
+// -firstObject у NSArray стал публичным API только в iOS 7; в SDK 6.1 его
+// объявления нет.
+NSString *A5DocumentsDirectory(void)
 {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
                                                          NSUserDomainMask, YES);
-    return [paths.firstObject stringByAppendingPathComponent:@"Machines"];
+    return paths.count > 0 ? [paths objectAtIndex:0] : NSHomeDirectory();
+}
+
++ (NSString *)machinesRootPath
+{
+    return [A5DocumentsDirectory() stringByAppendingPathComponent:@"Machines"];
 }
 
 - (NSString *)directoryPath

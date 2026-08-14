@@ -38,9 +38,7 @@
 
 + (NSString *)rootPath
 {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
-                                                         NSUserDomainMask, YES);
-    return [paths.firstObject stringByAppendingPathComponent:@"Machines"];
+    return [A5DocumentsDirectory() stringByAppendingPathComponent:@"Machines"];
 }
 
 - (void)reload
@@ -153,9 +151,7 @@
 
 - (NSArray *)availableImagePathsWithExtensions:(NSArray *)extensions
 {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
-                                                         NSUserDomainMask, YES);
-    NSString *documents = paths.firstObject;
+    NSString *documents = A5DocumentsDirectory();
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSArray *entries = [fileManager contentsOfDirectoryAtPath:documents error:NULL];
 
