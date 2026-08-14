@@ -10,6 +10,11 @@
 	<string>A5VM</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.makrsas.a5vm</string>
+	<key>CFBundleIconFiles</key>
+	<array>
+		<string>Icon.png</string>
+		<string>Icon@2x.png</string>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

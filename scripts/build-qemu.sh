@@ -99,7 +99,7 @@ fi
 # командной строке побеждает последний.  Разъехавшись, они молча заставят
 # проверки компилироваться под другой таргет, чем настоящая сборка.
 #
-QEMU_CFLAGS="$A5_QEMU_BASE_CFLAGS -fPIC -O2"
+QEMU_CFLAGS="$A5_QEMU_BASE_CFLAGS -fPIC -O2 $A5_LEGACY_C_FLAGS"
 QEMU_CFLAGS="$QEMU_CFLAGS -include $SCRIPT_DIR/compat/ios6-compat.h"
 QEMU_CFLAGS="$QEMU_CFLAGS -I$A5_DEPS/include"
 

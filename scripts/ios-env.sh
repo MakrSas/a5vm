@@ -57,11 +57,26 @@ A5_QEMU_TARGET="${A5_ARCH}-apple-ios${A5_TLS_MIN_VERSION}"
 A5_QEMU_BASE_CFLAGS="-target $A5_QEMU_TARGET -arch $A5_ARCH -isysroot $A5_SDKROOT \
 -miphoneos-version-min=${A5_TLS_MIN_VERSION} -femulated-tls"
 
+#
+# Начиная с clang 16 набор давних «просто предупреждений» стал ошибками по
+# умолчанию: неявное объявление функции, подразумеваемый int, смешение
+# несовместимых указателей.  Ни libffi 3.3, ни pixman 0.40, ни QEMU 5.1 под
+# такой компилятор не писались — например, libffi зовёт memcpy, не подключив
+# <string.h>.  Править чужие релизы по одному месту смысла нет: на armv7 эти
+# конструкции работают ровно так, как задумывалось (int и void* здесь оба
+# 32-битные и возвращаются в одном регистре), поэтому возвращаем им прежний
+# статус предупреждений.
+#
+A5_LEGACY_C_FLAGS="-Wno-implicit-function-declaration -Wno-implicit-int \
+-Wno-int-conversion -Wno-incompatible-pointer-types \
+-Wno-incompatible-function-pointer-types -Wno-deprecated-non-prototype"
+
 export A5_ROOT A5_WORK A5_DEPS A5_SRC
 export A5_SDKROOT A5_ARCH A5_MIN_VERSION A5_SDK_VERSION
 export A5_CC A5_AR A5_RANLIB A5_STRIP
 export A5_TARGET A5_BASE_CFLAGS
 export A5_TLS_MIN_VERSION A5_QEMU_TARGET A5_QEMU_BASE_CFLAGS
+export A5_LEGACY_C_FLAGS
 
 a5_log() {
     echo "==> $*"

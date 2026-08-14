@@ -26,7 +26,7 @@ export CXX="$A5_CC"
 export AR="$A5_AR"
 export RANLIB="$A5_RANLIB"
 export STRIP="$A5_STRIP"
-export CFLAGS="$A5_BASE_CFLAGS -fPIC -O2"
+export CFLAGS="$A5_BASE_CFLAGS -fPIC -O2 $A5_LEGACY_C_FLAGS"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$A5_BASE_CFLAGS"
 export CPPFLAGS="-I$A5_DEPS/include"
@@ -124,7 +124,7 @@ strip = '$A5_STRIP'
 pkg-config = '$(command -v pkg-config)'
 
 [built-in options]
-c_args = ['-target', '$A5_TARGET', '-arch', '$A5_ARCH', '-isysroot', '$A5_SDKROOT', '-miphoneos-version-min=$A5_MIN_VERSION', '-fPIC', '-O2', '-I$A5_DEPS/include', '-DA5_IOS_BUILD']
+c_args = ['-target', '$A5_TARGET', '-arch', '$A5_ARCH', '-isysroot', '$A5_SDKROOT', '-miphoneos-version-min=$A5_MIN_VERSION', '-fPIC', '-O2', '-I$A5_DEPS/include', '-DA5_IOS_BUILD', '-Wno-implicit-function-declaration', '-Wno-implicit-int', '-Wno-int-conversion', '-Wno-incompatible-pointer-types']
 c_link_args = ['-target', '$A5_TARGET', '-arch', '$A5_ARCH', '-isysroot', '$A5_SDKROOT', '-miphoneos-version-min=$A5_MIN_VERSION', '-L$A5_DEPS/lib']
 
 [host_machine]
@@ -162,9 +162,6 @@ if ! built "pixman-$PIXMAN_VERSION"; then
     a5_log "сборка pixman"
     (
         cd "$A5_SRC/pixman-$PIXMAN_VERSION"
-        # Старый pixman передаёт в качестве колбэков функции с не вполне
-        # совпадающими сигнатурами; современный clang считает это ошибкой.
-        CFLAGS="$CFLAGS -Wno-incompatible-function-pointer-types" \
         ./configure --host=arm-apple-darwin --prefix="$A5_DEPS" \
             --disable-shared --enable-static --disable-dependency-tracking \
             --disable-libpng --disable-gtk
