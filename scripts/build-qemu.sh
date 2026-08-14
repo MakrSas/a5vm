@@ -197,10 +197,24 @@ test -f "$LIBRARY"
 # оставить как есть, dyld на iPhone 4S откажется грузить библиотеку,
 # которая якобы требует iOS 9.  Возвращаем настоящий минимум.
 #
+#
+# Именно -set-version-min, а не -set-build-version: первый записывает
+# legacy-команду LC_VERSION_MIN_IPHONEOS, вторая — LC_BUILD_VERSION,
+# появившуюся только в 2017 году вместе с SDK iOS 11.  dyld на iOS 6 о
+# существовании второй не знает, и полагаться на то, что он аккуратно
+# пропустит незнакомую команду загрузки, незачем — тем более что у самого
+# приложения там ровно legacy-вариант.
+#
 a5_log "выставление минимальной версии iOS $A5_MIN_VERSION"
 xcrun --sdk iphoneos vtool \
-    -set-build-version ios "$A5_MIN_VERSION" "$A5_SDK_VERSION" \
+    -set-version-min ios "$A5_MIN_VERSION" "$A5_SDK_VERSION" \
     -replace -output "$LIBRARY" "$LIBRARY"
+
+if ! otool -l "$LIBRARY" | grep -q LC_VERSION_MIN_IPHONEOS; then
+    echo "в библиотеке нет LC_VERSION_MIN_IPHONEOS — dyld на iOS 6 её не поймёт" >&2
+    otool -l "$LIBRARY" | grep -A4 -E 'LC_BUILD_VERSION|LC_VERSION_MIN' >&2
+    exit 1
+fi
 
 # configure не передаёт -install_name, поэтому линковщик записал в LC_ID_DYLIB
 # абсолютный путь сборочной машины.  Для dlopen по явному пути это не важно,
