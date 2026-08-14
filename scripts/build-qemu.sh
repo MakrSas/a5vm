@@ -208,9 +208,31 @@ xcrun --sdk iphoneos vtool \
 install_name_tool -id "@executable_path/libqemu-system-i386.dylib" "$LIBRARY"
 
 cp "$LIBRARY" "$OUT_DIR/"
-rm -rf "$OUT_DIR/pc-bios"
-cp -R "$QEMU_BUILD/pc-bios" "$OUT_DIR/pc-bios"
 cp "$QEMU_SRC/COPYING" "$OUT_DIR/QEMU-COPYING"
+
+#
+# Из pc-bios берётся только то, что может понадобиться машине pc с гостем
+# i386.  Целиком каталог весит около 230 МБ, и почти всё это — образы UEFI
+# (edk2) и прошивки для совсем других архитектур: SLOF, openbios, u-boot,
+# skiboot.  Ни одна из них не может быть загружена в нашей конфигурации, а
+# место на телефоне они занимали бы вполне настоящее.
+#
+rm -rf "$OUT_DIR/pc-bios"
+mkdir -p "$OUT_DIR/pc-bios"
+for firmware in \
+    bios.bin bios-256k.bin \
+    vgabios.bin vgabios-cirrus.bin vgabios-stdvga.bin \
+    kvmvapic.bin sgabios.bin pvh.bin \
+    linuxboot.bin linuxboot_dma.bin multiboot.bin
+do
+    if [ -f "$QEMU_BUILD/pc-bios/$firmware" ]; then
+        cp "$QEMU_BUILD/pc-bios/$firmware" "$OUT_DIR/pc-bios/"
+    else
+        echo "прошивка $firmware не найдена в сборке" >&2
+        exit 1
+    fi
+done
+a5_log "pc-bios: $(du -sh "$OUT_DIR/pc-bios" | cut -f1)"
 
 a5_log "готово"
 file "$OUT_DIR/libqemu-system-i386.dylib"
