@@ -97,10 +97,32 @@ a5_log "сборка заглушек рантайма"
     -o "$A5_WORK/ios6-compat.o"
 QEMU_LDFLAGS="$QEMU_LDFLAGS $A5_WORK/ios6-compat.o"
 
-# Полезно видеть в логе сразу, есть ли вообще armv7 в compiler-rt: если нет,
-# именно наш __emutls_get_address и окажется единственным.
-COMPILER_RT="$(dirname "$A5_CC")/../lib/clang"
-a5_log "compiler-rt: $(find "$COMPILER_RT" -name 'libclang_rt.ios.a' -print -quit 2>/dev/null || echo 'не найден')"
+# Есть ли вообще armv7 в compiler-rt: если среза нет, единственной
+# реализацией __emutls_get_address оказывается наша, и спрашивать с неё
+# нужно соответственно.
+COMPILER_RT_LIB="$(find "$(dirname "$A5_CC")/../lib/clang" -name 'libclang_rt.ios.a' -print -quit 2>/dev/null || true)"
+if [ -n "$COMPILER_RT_LIB" ]; then
+    a5_log "compiler-rt: $COMPILER_RT_LIB"
+    lipo -info "$COMPILER_RT_LIB" 2>&1 | sed 's/^/    /' || true
+    if lipo -info "$COMPILER_RT_LIB" 2>/dev/null | grep -q armv7; then
+        a5_log "  armv7-срез ЕСТЬ — можно опереться на штатный __emutls_get_address"
+        nm -arch armv7 "$COMPILER_RT_LIB" 2>/dev/null |
+            grep -c '__emutls_get_address' | sed 's/^/    определений emutls: /' || true
+    else
+        a5_log "  armv7-среза НЕТ — работает наш __emutls_get_address"
+    fi
+else
+    a5_log "compiler-rt: не найден"
+fi
+
+# Отдельная проверка эмулированного TLS — теми же флагами, что и QEMU,
+# и с тем же ios6-compat.o.  См. tools/tls-selftest.c.
+a5_log "сборка tls-selftest"
+"$A5_CC" $QEMU_CFLAGS -o "$OUT_DIR/tls-selftest" \
+    "$A5_ROOT/tools/tls-selftest.c" $QEMU_LDFLAGS
+xcrun --sdk iphoneos vtool \
+    -set-version-min ios "$A5_MIN_VERSION" "$A5_SDK_VERSION" \
+    -replace -output "$OUT_DIR/tls-selftest" "$OUT_DIR/tls-selftest"
 
 export PKG_CONFIG_LIBDIR="$A5_DEPS/lib/pkgconfig:$A5_DEPS/share/pkgconfig"
 export PKG_CONFIG_PATH="$PKG_CONFIG_LIBDIR"

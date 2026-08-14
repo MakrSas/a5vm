@@ -102,9 +102,18 @@ a5_log "сборка qemu-smoke"
 # Подпись.  На jailbreak-устройстве достаточно фиктивной: ядро с
 # отключённой проверкой подписи принимает её, но совсем без подписи
 # бинарник всё равно не запустится.
+# tls-selftest собирается вместе с QEMU (ему нужны те же флаги и тот же
+# ios6-compat.o), но подписать его удобнее здесь — ldid стоит в этой задаче.
+if [ -f "$QEMU_DIR/tls-selftest" ]; then
+    cp "$QEMU_DIR/tls-selftest" "$OUT_DIR/tls-selftest"
+fi
+
 a5_log "подпись"
 ldid -S "$BUNDLE/A5VM"
 ldid -S "$OUT_DIR/qemu-smoke"
+if [ -f "$OUT_DIR/tls-selftest" ]; then
+    ldid -S "$OUT_DIR/tls-selftest"
+fi
 if [ -f "$BUNDLE/libqemu-system-i386.dylib" ]; then
     ldid -S "$BUNDLE/libqemu-system-i386.dylib"
 fi

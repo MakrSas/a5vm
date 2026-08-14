@@ -90,7 +90,7 @@ jobs:
       - name: Package
         run: |
           cd build/app
-          zip -qry ../a5vm-ios6.zip A5VM.app qemu-smoke
+          zip -qry ../a5vm-ios6.zip A5VM.app qemu-smoke tls-selftest
 
       - uses: actions/upload-artifact@v4
         with:
