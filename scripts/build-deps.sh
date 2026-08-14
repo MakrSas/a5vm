@@ -29,7 +29,11 @@ export STRIP="$A5_STRIP"
 export CFLAGS="$A5_BASE_CFLAGS -fPIC -O2 $A5_LEGACY_C_FLAGS"
 export CXXFLAGS="$CFLAGS"
 export LDFLAGS="$A5_BASE_CFLAGS"
-export CPPFLAGS="-I$A5_DEPS/include"
+# PAGE_MAX_SIZE/PAGE_MAX_SHIFT Apple ввела в <mach/machine/vm_param.h> позже
+# этого SDK — вместе с 16-килобайтными страницами на arm64.  libffi на них
+# рассчитывает (и в C, и в ассемблере), а для armv7 страница всегда 4 КБ,
+# так что значения однозначны.
+export CPPFLAGS="-I$A5_DEPS/include -DPAGE_MAX_SIZE=4096 -DPAGE_MAX_SHIFT=12"
 
 # pkg-config должен видеть ТОЛЬКО наши кросс-собранные пакеты.  Без
 # PKG_CONFIG_LIBDIR он подмешает пакеты хоста (macOS/Homebrew, x86_64 или
@@ -64,6 +68,27 @@ mark_built() { touch "$A5_STAMPS/$1"; }
 if ! built "libffi-$LIBFFI_VERSION"; then
     fetch "https://github.com/libffi/libffi/releases/download/v$LIBFFI_VERSION/libffi-$LIBFFI_VERSION.tar.gz" \
         "libffi-$LIBFFI_VERSION.tar.gz" "libffi-$LIBFFI_VERSION"
+    #
+    # src/arm/sysv.S: ffi_call_VFP открывает cfi_startproc и намеренно
+    # проваливается в ffi_call_SYSV, где стоит парный cfi_endproc.  Между
+    # ними оказывается глобальная метка _ffi_call_SYSV, а ассемблер Apple
+    # такого не допускает: "non-private labels cannot appear between
+    # .cfi_startproc / .cfi_endproc pairs".
+    #
+    # Переносим cfi_startproc к ffi_call_SYSV — то есть к той функции, у
+    # которой кадр стека реально есть.  Пролог ffi_call_VFP стек не трогает
+    # (пара vldr и add по r0), поэтому отсутствие для него CFI не меняет
+    # ничего, кроме возможности размотать стек в этих пяти инструкциях.
+    #
+    SYSV="$A5_SRC/libffi-$LIBFFI_VERSION/src/arm/sysv.S"
+    if grep -q 'ARM_FUNC_START(ffi_call_VFP)' "$SYSV"; then
+        perl -0pi -e 's/(ARM_FUNC_START\(ffi_call_VFP\)\s*\n\s*UNWIND\(\.fnstart\)\s*\n)\s*cfi_startproc\s*\n/$1/' "$SYSV"
+        perl -0pi -e 's/(ARM_FUNC_START\(ffi_call_SYSV\)\s*\n)/$1\tcfi_startproc\n/' "$SYSV"
+        grep -A1 -F 'ARM_FUNC_START(ffi_call_SYSV)' "$SYSV" | grep -q cfi_startproc || {
+            echo "не удалось перенести cfi_startproc в sysv.S" >&2; exit 1; }
+        a5_log "libffi: cfi_startproc перенесён к ffi_call_SYSV"
+    fi
+
     a5_log "сборка libffi"
     (
         cd "$A5_SRC/libffi-$LIBFFI_VERSION"
