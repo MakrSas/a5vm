@@ -91,29 +91,33 @@ QEMU_CFLAGS="$QEMU_CFLAGS -fno-builtin-pow -fno-builtin-exp10"
 
 QEMU_LDFLAGS="$A5_QEMU_BASE_CFLAGS -L$A5_DEPS/lib"
 
-# __clear_cache и __emutls_get_address: см. scripts/compat/ios6-compat.c.
-a5_log "сборка заглушек рантайма"
-"$A5_CC" $QEMU_CFLAGS -c "$SCRIPT_DIR/compat/ios6-compat.c" \
-    -o "$A5_WORK/ios6-compat.o"
-QEMU_LDFLAGS="$QEMU_LDFLAGS $A5_WORK/ios6-compat.o"
-
-# Есть ли вообще armv7 в compiler-rt: если среза нет, единственной
-# реализацией __emutls_get_address оказывается наша, и спрашивать с неё
-# нужно соответственно.
+#
+# __emutls_get_address и __clear_cache берутся из compiler-rt, а не пишутся
+# руками.
+#
+# Своя реализация emutls тут была и работала правильно (проверено на
+# устройстве отдельным тестом), но брала мьютекс на КАЖДОЕ обращение к
+# __thread-переменной. Для QEMU это смертельно: tb_exec_lock()/unlock()
+# трогают tcg_ctx вокруг каждого исполнения блока трансляции, current_cpu и
+# RCU — ещё чаще. В compiler-rt тот же вызов в разы дешевле: атомарное
+# чтение индекса и pthread_getspecific, без блокировок на горячем пути.
+#
+# Архив подключается явно, хотя clang обычно делает это сам: если срез
+# armv7 когда-нибудь исчезнет из Xcode, отказ будет сразу на линковке и с
+# понятной причиной, а не в виде загадочного поведения на устройстве.
+#
 COMPILER_RT_LIB="$(find "$(dirname "$A5_CC")/../lib/clang" -name 'libclang_rt.ios.a' -print -quit 2>/dev/null || true)"
-if [ -n "$COMPILER_RT_LIB" ]; then
-    a5_log "compiler-rt: $COMPILER_RT_LIB"
-    lipo -info "$COMPILER_RT_LIB" 2>&1 | sed 's/^/    /' || true
-    if lipo -info "$COMPILER_RT_LIB" 2>/dev/null | grep -q armv7; then
-        a5_log "  armv7-срез ЕСТЬ — можно опереться на штатный __emutls_get_address"
-        nm -arch armv7 "$COMPILER_RT_LIB" 2>/dev/null |
-            grep -c '__emutls_get_address' | sed 's/^/    определений emutls: /' || true
-    else
-        a5_log "  armv7-среза НЕТ — работает наш __emutls_get_address"
-    fi
-else
-    a5_log "compiler-rt: не найден"
+if [ -z "$COMPILER_RT_LIB" ]; then
+    echo "libclang_rt.ios.a не найдена — неоткуда взять __emutls_get_address" >&2
+    exit 1
 fi
+a5_log "compiler-rt: $COMPILER_RT_LIB"
+lipo -info "$COMPILER_RT_LIB" 2>&1 | sed 's/^/    /' || true
+if ! lipo -info "$COMPILER_RT_LIB" 2>/dev/null | grep -q armv7; then
+    echo "в libclang_rt.ios.a нет среза armv7" >&2
+    exit 1
+fi
+QEMU_LDFLAGS="$QEMU_LDFLAGS $COMPILER_RT_LIB"
 
 # Отдельная проверка эмулированного TLS — теми же флагами, что и QEMU,
 # и с тем же ios6-compat.o.  См. tools/tls-selftest.c.
