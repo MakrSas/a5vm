@@ -119,6 +119,13 @@ if ! lipo -info "$COMPILER_RT_LIB" 2>/dev/null | grep -q armv7; then
 fi
 QEMU_LDFLAGS="$QEMU_LDFLAGS $COMPILER_RT_LIB"
 
+# __clear_cache в этом срезе compiler-rt всё же не нашёлся (в отличие от
+# emutls), поэтому остаётся своим — см. scripts/compat/ios6-compat.c.
+a5_log "сборка заглушек рантайма"
+"$A5_CC" $QEMU_CFLAGS -c "$SCRIPT_DIR/compat/ios6-compat.c" \
+    -o "$A5_WORK/ios6-compat.o"
+QEMU_LDFLAGS="$QEMU_LDFLAGS $A5_WORK/ios6-compat.o"
+
 # Отдельная проверка эмулированного TLS — теми же флагами, что и QEMU,
 # и с тем же ios6-compat.o.  См. tools/tls-selftest.c.
 a5_log "сборка tls-selftest"

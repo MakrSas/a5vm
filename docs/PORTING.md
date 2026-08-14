@@ -56,7 +56,7 @@ configure просто отказывается продолжать. А clang �
 | `clock_gettime`, `CLOCK_MONOTONIC` | `include/qemu/timer.h`, безусловно | заглушка через `mach_absolute_time()` в `ios6-compat.h`, подключается через `-include` |
 | `VM_FLAGS_RANDOM_ADDR` | `accel/tcg/translate-all.c` | константа ABI ядра, объявлена там же |
 | `fdopendir` | `hw/usb/dev-mtp.c` | `CONFIG_USB_STORAGE_MTP=n` — проброс каталога хоста нам не нужен |
-| `__clear_cache` | `tcg/arm/tcg-target.h` через билтин | реализован через `sys_icache_invalidate()` |
+| `__clear_cache` | `tcg/arm/tcg-target.h` через билтин | берётся из `libclang_rt.ios.a` |
 | заголовки libc++ | `disas/libvixl` | C++ отключён целиком, см. ниже |
 | `libproc.h` | `glib/gspawn.c` | блок скрыт под `A5_IOS_BUILD` |
 
