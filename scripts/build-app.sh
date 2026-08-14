@@ -86,11 +86,25 @@ else
     a5_log "ВНИМАНИЕ: QEMU не найден в $QEMU_DIR, бандл собран без него"
 fi
 
+#
+# Отдельный тестовый бинарник: единственный способ проверить запуск гостя,
+# не тапая по иконке физически.  Кладётся рядом с бандлом, а не внутрь —
+# в приложении ему делать нечего.  Тоже через dlopen, то есть тем же путём,
+# что и приложение.
+#
+a5_log "сборка qemu-smoke"
+"$A5_CC" $A5_BASE_CFLAGS \
+    -O2 -Wall \
+    -I "$A5_ROOT/bridge" \
+    "$A5_ROOT/tools/qemu-smoke.c" \
+    -o "$OUT_DIR/qemu-smoke"
+
 # Подпись.  На jailbreak-устройстве достаточно фиктивной: ядро с
 # отключённой проверкой подписи принимает её, но совсем без подписи
 # бинарник всё равно не запустится.
 a5_log "подпись"
 ldid -S "$BUNDLE/A5VM"
+ldid -S "$OUT_DIR/qemu-smoke"
 if [ -f "$BUNDLE/libqemu-system-i386.dylib" ]; then
     ldid -S "$BUNDLE/libqemu-system-i386.dylib"
 fi
