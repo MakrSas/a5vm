@@ -166,7 +166,11 @@ EOF
         # nls=disabled убирает gettext: иначе meson полез бы качать
         # subproject proxy-libintl, добавляя сетевую зависимость и ещё одну
         # библиотеку, которую пришлось бы делать статической.
-        meson setup build --cross-file "$A5_WORK/glib-cross.ini" \
+        # meson запускается как модуль конкретного интерпретатора, а не через
+        # его же скрипт-обёртку: glib отдаёт свои кодогенераторы (gdbus-codegen
+        # и прочие) ровно тому Python, под которым работает meson.
+        "$A5_PYTHON" -m mesonbuild.mesonmain setup build \
+            --cross-file "$A5_WORK/glib-cross.ini" \
             --prefix="$A5_DEPS" \
             --default-library=static \
             -Dtests=false -Dinstalled_tests=false \
@@ -174,8 +178,8 @@ EOF
             -Dglib_assert=false -Dglib_checks=false \
             -Dlibmount=disabled -Dselinux=disabled -Dxattr=false \
             -Ddtrace=false -Dsystemtap=false
-        meson compile -C build
-        meson install -C build
+        "$A5_PYTHON" -m mesonbuild.mesonmain compile -C build
+        "$A5_PYTHON" -m mesonbuild.mesonmain install -C build
     )
     mark_built "glib-$GLIB_VERSION"
 fi

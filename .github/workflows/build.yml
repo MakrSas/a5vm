@@ -12,8 +12,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # meson ставится в отдельное окружение на Python 3.11: он передаёт
+      # сборочным скриптам тот интерпретатор, под которым работает сам, а
+      # gdbus-codegen в glib 2.76 импортирует distutils, которого нет в
+      # Python 3.12 и новее (на раннере системный уже 3.14).
       - name: Install build tools
-        run: brew install meson ninja pkg-config
+        run: |
+          brew install python@3.11 ninja pkg-config
+          "$(brew --prefix python@3.11)/bin/python3.11" -m venv "$RUNNER_TEMP/meson-venv"
+          "$RUNNER_TEMP/meson-venv/bin/pip" install --quiet --upgrade pip meson
+          echo "A5_PYTHON=$RUNNER_TEMP/meson-venv/bin/python" >> "$GITHUB_ENV"
 
       # SDK живёт отдельным кэшем: он неизменен и весит около 270 МБ в
       # скачивании, перекачивать его на каждый прогон бессмысленно.

@@ -26,6 +26,15 @@ A5_SRC="$A5_WORK/src"
 # знает, а вот заголовки и стабы этого SDK застали далеко не все функции,
 # на которые современный компилятор рассчитывает.
 #
+#
+# Python, под которым запускается meson.  Важно, какой именно: meson отдаёт
+# сборочным скриптам ровно тот интерпретатор, под которым работает сам, а
+# gdbus-codegen в glib 2.76 импортирует distutils, выброшенный из Python
+# 3.12.  На macOS-раннере системный python3 уже 3.14, поэтому CI подсовывает
+# сюда 3.11 — см. .github/workflows/build.yml.
+#
+A5_PYTHON=${A5_PYTHON:-python3}
+
 A5_CC=${A5_CC:-$(xcrun --sdk iphoneos --find clang)}
 A5_AR=${A5_AR:-$(xcrun --sdk iphoneos --find ar)}
 A5_RANLIB=${A5_RANLIB:-$(xcrun --sdk iphoneos --find ranlib)}
@@ -73,7 +82,7 @@ A5_LEGACY_C_FLAGS="-Wno-implicit-function-declaration -Wno-implicit-int \
 
 export A5_ROOT A5_WORK A5_DEPS A5_SRC
 export A5_SDKROOT A5_ARCH A5_MIN_VERSION A5_SDK_VERSION
-export A5_CC A5_AR A5_RANLIB A5_STRIP
+export A5_CC A5_AR A5_RANLIB A5_STRIP A5_PYTHON
 export A5_TARGET A5_BASE_CFLAGS
 export A5_TLS_MIN_VERSION A5_QEMU_TARGET A5_QEMU_BASE_CFLAGS
 export A5_LEGACY_C_FLAGS
