@@ -1,0 +1,6 @@
+build/
+work/
+*.o
+*.dylib
+*.app/
+.DS_Store

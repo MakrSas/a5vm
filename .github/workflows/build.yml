@@ -1,0 +1,91 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  qemu:
+    name: QEMU (armv7, iOS 6)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: brew install meson ninja pkg-config
+
+      # SDK живёт отдельным кэшем: он неизменен и весит около 270 МБ в
+      # скачивании, перекачивать его на каждый прогон бессмысленно.
+      - name: Cache iPhoneOS 6.1 SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/iphone-sdk
+          key: iphoneos-sdk-6.1-v1
+
+      - name: Fetch SDK
+        run: |
+          echo "A5_SDKROOT=$(scripts/fetch-sdk.sh ~/iphone-sdk)" >> "$GITHUB_ENV"
+
+      # Зависимости пересобираются, только когда меняется сам скрипт сборки
+      # или настройки тулчейна.
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/deps
+            work/stamps
+          key: qemu-deps-${{ hashFiles('scripts/build-deps.sh', 'scripts/ios-env.sh') }}
+
+      - name: Build dependencies
+        run: scripts/build-deps.sh
+
+      - name: Build QEMU
+        run: scripts/build-qemu.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qemu-ios-armv7
+          path: build/qemu
+          if-no-files-found: error
+
+  app:
+    name: A5VM.app
+    runs-on: macos-latest
+    needs: qemu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        env:
+          HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+        run: brew install ldid
+
+      - name: Cache iPhoneOS 6.1 SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/iphone-sdk
+          key: iphoneos-sdk-6.1-v1
+
+      - name: Fetch SDK
+        run: |
+          echo "A5_SDKROOT=$(scripts/fetch-sdk.sh ~/iphone-sdk)" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: qemu-ios-armv7
+          path: build/qemu
+
+      - name: Build app
+        run: scripts/build-app.sh
+
+      - name: Package
+        run: |
+          cd build/app
+          zip -qry ../a5vm-ios6.zip A5VM.app
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a5vm-ios6
+          path: build/a5vm-ios6.zip
+          if-no-files-found: error
