@@ -67,14 +67,33 @@ static inline int clock_gettime(clockid_t clock_id, struct timespec *ts)
 #endif /* CLOCK_MONOTONIC */
 
 /*
- * VM_FLAGS_RANDOM_ADDR — флаг vm_map(2), которым пользуется код iOS-JIT в
- * accel/tcg/translate-all.c (alloc_jit_rw_mirror).  Значение задаёт и
- * интерпретирует само ядро, поэтому оно не может измениться между версиями
- * ОС, не сломав уже собранные бинарники; проще объявить константу, чем
- * подменять целый заголовок ядра ради одного макроса.
+ * Два флага, которыми QEMU выделяет память под JIT, появились уже после
+ * iOS 6.  Оба проверены на устройстве: каждый в свой черёд валил запуск.
+ *
+ * MAP_JIT (accel/tcg/translate-all.c, ветка CONFIG_DARWIN) введён ради
+ * hardened runtime и на iOS требует права dynamic-codesigning; ядро
+ * xnu-2107 его не принимает, и mmap просто возвращает ошибку —
+ * «Could not allocate dynamic translator buffer».  Смысл флага в том,
+ * чтобы разрешить страницы, одновременно записываемые и исполняемые, а на
+ * устройстве с jailbreak такие страницы и так доступны обычным mmap.
+ * Значит здесь он не нужен, а мешает.
+ *
+ * VM_FLAGS_RANDOM_ADDR (там же, alloc_jit_rw_mirror) в SDK 6.1 не объявлен
+ * вовсе — потому что появился позже.  vm_map отвергает неизвестные биты
+ * флагов, и mach_vm_remap падал с «Could not remap code buffer mirror».
+ * Единственное, что он даёт, — рандомизацию адреса зеркального
+ * отображения; без неё можно обойтись.
+ *
+ * Обнуление, а не удаление из исходников: оба используются ровно по
+ * одному разу и только в этих двух местах, так что смысл правки виден
+ * целиком отсюда.
  */
-#ifndef VM_FLAGS_RANDOM_ADDR
-#define VM_FLAGS_RANDOM_ADDR 0x00000800
-#endif
+#include <sys/mman.h>
+
+#undef MAP_JIT
+#define MAP_JIT 0
+
+#undef VM_FLAGS_RANDOM_ADDR
+#define VM_FLAGS_RANDOM_ADDR 0
 
 #endif /* A5_IOS6_COMPAT_H */
