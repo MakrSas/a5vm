@@ -50,34 +50,9 @@ if [ ! -f "$QEMU_SRC/ui/keycodemapdb/data/keymaps.csv" ]; then
 fi
 
 # ------------------------------------------------------------------ правки
-#
-# tcg/arm/tcg-target.h: flush_dcache_range под CONFIG_IOS_JIT в этом форке —
-# незаконченная заглушка с голым #error в теле.  Отключить CONFIG_IOS_JIT
-# нельзя (configure включает его для iOS безусловно), да и не нужно: на ARM
-# согласованность кэшей после генерации кода надо обеспечивать явно, иначе
-# JIT исполняет то, что осталось в кэше инструкций от предыдущего кода.
-# sys_dcache_flush из <libkern/OSCacheControl.h> — штатный для Дарвина
-# способ это сделать, доступный на iOS задолго до 6.0.
-#
-TCG_TARGET_H="$QEMU_SRC/tcg/arm/tcg-target.h"
-if grep -q 'Unimplemented dcache flush function' "$TCG_TARGET_H"; then
-    perl -0pi -e 's/(#if defined\(CONFIG_IOS_JIT\)\n)(static inline void flush_dcache_range\(uintptr_t start, uintptr_t stop\)\n\{\n)#error "Unimplemented dcache flush function"/$1#include <libkern\/OSCacheControl.h>\n$2    sys_dcache_flush((void *)start, stop - start);/' "$TCG_TARGET_H"
-    grep -q 'sys_dcache_flush' "$TCG_TARGET_H" || {
-        echo "не удалось заменить заглушку flush_dcache_range" >&2; exit 1; }
-    a5_log "tcg/arm: flush_dcache_range реализован через sys_dcache_flush"
-fi
-
-#
-# hw/usb/dev-mtp.c (проброс каталога хоста в гостя по MTP) вызывает
-# fdopendir(), которого в заголовках iPhoneOS6.1 ещё нет.  Устройство
-# включено по умолчанию через Kconfig, но A5VM оно не нужно ни в каком
-# виде — отключаем, вместо того чтобы добавлять ещё одну заглушку libc.
-#
-MTP_CONFIG="$QEMU_SRC/default-configs/i386-softmmu.mak"
-if ! grep -q '^CONFIG_USB_STORAGE_MTP=n' "$MTP_CONFIG"; then
-    echo 'CONFIG_USB_STORAGE_MTP=n' >> "$MTP_CONFIG"
-    a5_log "USB MTP отключён"
-fi
+# Все изменения исходников QEMU собраны в одном месте, с объяснением каждого.
+a5_log "правки исходников"
+python3 "$SCRIPT_DIR/patch-qemu.py" "$QEMU_SRC"
 
 # ------------------------------------------------------------------ мост
 #
