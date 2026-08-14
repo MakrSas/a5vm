@@ -145,6 +145,19 @@ dump_logs_on_failure() {
 }
 trap dump_logs_on_failure EXIT
 
+#
+# A5_TCG_INTERPRETER=1 собирает QEMU с интерпретатором TCG вместо генерации
+# нативного кода.  Он в разы медленнее, но не требует ни исполняемой памяти,
+# ни согласованности кэшей — то есть служит и запасным вариантом для
+# устройств, где ядро не даёт RWX, и способом разделить «сломана генерация
+# кода» и «сломано что-то ещё» при разборе неполадок.
+#
+QEMU_EXTRA_ARGS=""
+if [ -n "${A5_TCG_INTERPRETER:-}" ]; then
+    a5_log "режим: интерпретатор TCG (без JIT)"
+    QEMU_EXTRA_ARGS="--enable-tcg-interpreter"
+fi
+
 a5_log "configure"
 (
     cd "$QEMU_BUILD"
@@ -175,6 +188,7 @@ a5_log "configure"
         --disable-usb-redir --disable-libusb --disable-smartcard \
         --disable-tpm --disable-attr --disable-xfsctl --disable-mpath \
         --disable-libpmem --disable-malloc-trim \
+        $QEMU_EXTRA_ARGS \
         --extra-cflags="$QEMU_CFLAGS" \
         --extra-ldflags="$QEMU_LDFLAGS"
 )

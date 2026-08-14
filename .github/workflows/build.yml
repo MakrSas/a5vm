@@ -4,11 +4,18 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      tcg_interpreter:
+        description: "Собрать QEMU с интерпретатором TCG вместо JIT"
+        type: boolean
+        default: false
 
 jobs:
   qemu:
     name: QEMU (armv7, iOS 6)
     runs-on: macos-latest
+    env:
+      A5_TCG_INTERPRETER: ${{ inputs.tcg_interpreter && '1' || '' }}
     steps:
       - uses: actions/checkout@v4
 
