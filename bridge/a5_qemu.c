@@ -55,25 +55,73 @@ static bool     a5_surface_dirty;
 static uint32_t a5_button_state;
 
 /*
- * Обёртка над BQL ровно в том виде, в каком её делает ui/cocoa.m: вызов может
- * прийти как из главного потока (блокировки нет), так и из самого потока
- * QEMU через dpy_*-коллбэки (блокировка уже взята) — рекурсивно её брать
- * нельзя.
+ * Очередь ввода.
+ *
+ * Раньше отправка клавиш и указателя бралась за BQL прямо из главного
+ * потока UIKit, как это делает ui/cocoa.m. На настольной macOS так можно, а
+ * здесь нельзя: если поток QEMU почему-либо застревает, удерживая BQL, то
+ * следом намертво встаёт и главный поток приложения — вместо неработающей
+ * ВМ пользователь получает неработающий телефон.
+ *
+ * Поэтому UI только кладёт события в этот кольцевой буфер под собственным
+ * мьютексом (который никто не держит дольше нескольких инструкций), а
+ * разбирает их поток QEMU в dpy_refresh, где BQL уже взят. Задержка — не
+ * больше интервала обновления экрана, зато зависнуть UI не может в
+ * принципе. Переполнение осознанно теряет самые старые события: свежие
+ * важнее, а расти буферу некуда.
  */
-static bool a5_bql_lock(void)
+enum {
+    A5_INPUT_KEY,
+    A5_INPUT_POINTER,
+    A5_INPUT_PAUSE
+};
+
+typedef struct {
+    int32_t kind;
+    int32_t a, b, c, d;
+} a5_input_event;
+
+#define A5_INPUT_QUEUE_SIZE 512
+
+static a5_input_event  a5_input_queue[A5_INPUT_QUEUE_SIZE];
+static unsigned        a5_input_head;   /* откуда читаем */
+static unsigned        a5_input_count;  /* сколько лежит */
+static pthread_mutex_t a5_input_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void a5_input_push(int32_t kind, int32_t a, int32_t b,
+                          int32_t c, int32_t d)
 {
-    bool already_locked = qemu_mutex_iothread_locked();
-    if (!already_locked) {
-        qemu_mutex_lock_iothread();
+    a5_input_event *slot;
+
+    pthread_mutex_lock(&a5_input_mutex);
+    if (a5_input_count == A5_INPUT_QUEUE_SIZE) {
+        /* Буфер полон — выбрасываем самое старое событие. */
+        a5_input_head = (a5_input_head + 1) % A5_INPUT_QUEUE_SIZE;
+        a5_input_count--;
     }
-    return already_locked;
+    slot = &a5_input_queue[(a5_input_head + a5_input_count) % A5_INPUT_QUEUE_SIZE];
+    slot->kind = kind;
+    slot->a = a;
+    slot->b = b;
+    slot->c = c;
+    slot->d = d;
+    a5_input_count++;
+    pthread_mutex_unlock(&a5_input_mutex);
 }
 
-static void a5_bql_unlock(bool was_locked)
+static bool a5_input_pop(a5_input_event *event)
 {
-    if (!was_locked) {
-        qemu_mutex_unlock_iothread();
+    bool found = false;
+
+    pthread_mutex_lock(&a5_input_mutex);
+    if (a5_input_count > 0) {
+        *event = a5_input_queue[a5_input_head];
+        a5_input_head = (a5_input_head + 1) % A5_INPUT_QUEUE_SIZE;
+        a5_input_count--;
+        found = true;
     }
+    pthread_mutex_unlock(&a5_input_mutex);
+    return found;
 }
 
 /* ------------------------------------------------------------------ */
@@ -91,10 +139,17 @@ static void a5_gfx_switch(DisplayChangeListener *dcl, DisplaySurface *surface)
     a5_surface_dirty = true;
 }
 
+/* Определён ниже, рядом с таблицей кодов клавиш. */
+static void a5_input_drain(void);
+
 static void a5_refresh(DisplayChangeListener *dcl)
 {
     DisplaySurface *surface;
     a5_qemu_frame frame;
+
+    /* Единственное место, где события ввода попадают в гостя: здесь мы уже
+     * в потоке QEMU и под BQL. */
+    a5_input_drain();
 
     /* Заставляем видеоустройство перерисовать содержимое в поверхность —
      * без этого dpy_gfx_update не придёт вовсе. */
@@ -233,23 +288,9 @@ void a5_qemu_request_quit(void)
 
 void a5_qemu_set_paused(int32_t paused)
 {
-    bool was_locked;
-
-    if (!a5_display_ready) {
-        return;
-    }
-
-    was_locked = a5_bql_lock();
-    if (paused) {
-        if (runstate_is_running()) {
-            vm_stop(RUN_STATE_PAUSED);
-        }
-    } else {
-        if (!runstate_is_running()) {
-            vm_start();
-        }
-    }
-    a5_bql_unlock(was_locked);
+    /* Через ту же очередь, что и ввод: vm_stop/vm_start требуют BQL, а брать
+     * её из главного потока приложения нельзя (см. комментарий к очереди). */
+    a5_input_push(A5_INPUT_PAUSE, paused, 0, 0, 0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -376,40 +417,41 @@ static QKeyCode a5_key_to_qcode(a5_qemu_key key)
     }
 }
 
+/* Публичные функции ввода только кладут события в очередь — см. комментарий
+ * к ней выше.  Ничего от QEMU здесь не трогается, поэтому вызывать их можно
+ * из любого потока и в любой момент, даже до запуска ВМ. */
+
 void a5_qemu_send_key(a5_qemu_key key, int32_t down)
 {
-    QKeyCode qcode;
-    bool was_locked;
-
-    if (!a5_display_ready) {
-        return;
-    }
-    qcode = a5_key_to_qcode(key);
-    if (qcode == Q_KEY_CODE_UNMAPPED) {
-        return;
-    }
-
-    was_locked = a5_bql_lock();
-    qemu_input_event_send_key_qcode(a5_dcl.con, qcode, down != 0);
-    a5_bql_unlock(was_locked);
+    a5_input_push(A5_INPUT_KEY, key, down, 0, 0);
 }
 
 void a5_qemu_send_pointer(int32_t x, int32_t y, int32_t buttons, int32_t absolute)
 {
-    bool was_locked;
+    a5_input_push(A5_INPUT_POINTER, x, y, buttons, absolute);
+}
+
+/* Дальше — сторона потока QEMU: вызывается из a5_refresh под BQL. */
+
+static void a5_apply_key(a5_qemu_key key, bool down)
+{
+    QKeyCode qcode = a5_key_to_qcode(key);
+
+    if (qcode != Q_KEY_CODE_UNMAPPED) {
+        qemu_input_event_send_key_qcode(a5_dcl.con, qcode, down);
+    }
+}
+
+static void a5_apply_pointer(int32_t x, int32_t y, int32_t buttons,
+                             bool absolute)
+{
     uint32_t wanted = 0;
     uint32_t changed;
     DisplaySurface *surface;
 
-    if (!a5_display_ready) {
-        return;
-    }
-
     if (buttons & A5_BUTTON_LEFT)   { wanted |= 1u << INPUT_BUTTON_LEFT; }
     if (buttons & A5_BUTTON_RIGHT)  { wanted |= 1u << INPUT_BUTTON_RIGHT; }
     if (buttons & A5_BUTTON_MIDDLE) { wanted |= 1u << INPUT_BUTTON_MIDDLE; }
-
-    was_locked = a5_bql_lock();
 
     if (absolute) {
         /* Диапазон осей — реальный размер поверхности: qemu_input_queue_abs
@@ -444,5 +486,38 @@ void a5_qemu_send_pointer(int32_t x, int32_t y, int32_t buttons, int32_t absolut
     a5_button_state = wanted;
 
     qemu_input_event_sync();
-    a5_bql_unlock(was_locked);
+}
+
+static void a5_input_drain(void)
+{
+    a5_input_event event;
+
+    if (!a5_display_ready) {
+        return;
+    }
+
+    while (a5_input_pop(&event)) {
+        switch (event.kind) {
+        case A5_INPUT_KEY:
+            a5_apply_key((a5_qemu_key)event.a, event.b != 0);
+            break;
+
+        case A5_INPUT_POINTER:
+            a5_apply_pointer(event.a, event.b, event.c, event.d != 0);
+            break;
+
+        case A5_INPUT_PAUSE:
+            if (event.a) {
+                if (runstate_is_running()) {
+                    vm_stop(RUN_STATE_PAUSED);
+                }
+            } else if (!runstate_is_running()) {
+                vm_start();
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
 }

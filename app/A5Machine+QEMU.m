@@ -71,6 +71,11 @@ static NSString *A5EscapeDriveValue(NSString *value)
     // дистрибутиве, так что гость получает нормальное разрешение без доустановки.
     [arguments addObjectsFromArray:@[ @"-vga", @"cirrus" ]];
 
+    // Без этого машина pc создаёт сетевую карту по умолчанию и требует её
+    // загрузочный ROM (efi-e1000.rom), которого в бандле нет и быть не
+    // должно: сетевой поддержки в этой сборке нет вовсе.
+    [arguments addObjectsFromArray:@[ @"-net", @"none" ]];
+
     [arguments addObjectsFromArray:@[ @"-rtc", @"base=localtime" ]];
 
     if (hasHardDisk) {

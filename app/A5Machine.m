@@ -82,13 +82,13 @@ static NSString *const A5KeyAbsolute     = @"usesAbsolutePointer";
 - (void)applyTemplateDefaults
 {
     if ([_templateIdentifier isEqualToString:A5TemplateDOS]) {
-        _cpuModel          = @"486";
+        _cpuModel          = @"pentium";
         _ramMegabytes      = 16;
         _hardDiskMegabytes = 512;
         _bootDevice        = A5BootFloppy;
         _usesAbsolutePointer = NO;   // DOS-мыши не понимают usb-tablet
     } else if ([_templateIdentifier isEqualToString:A5TemplateWindows31]) {
-        _cpuModel          = @"486";
+        _cpuModel          = @"pentium";
         _ramMegabytes      = 32;
         _hardDiskMegabytes = 512;
         _bootDevice        = A5BootFloppy;
@@ -194,7 +194,10 @@ NSString *A5DocumentsDirectory(void)
 
 + (NSArray *)availableCPUModels
 {
-    return @[ @"486", @"pentium", @"pentium2" ];
+    // 486 сюда намеренно не входит: на машине pc он приводит SeaBIOS к
+    // тройному исключению ещё до загрузочного сектора (проверено на
+    // устройстве). Для DOS и Windows 3.1 pentium ничем не хуже.
+    return @[ @"pentium", @"pentium2" ];
 }
 
 + (NSString *)displayNameForBootDevice:(NSString *)bootDevice
