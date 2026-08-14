@@ -221,7 +221,11 @@ file "$OUT_DIR/libqemu-system-i386.dylib"
 # способна поймать сама, до установки на телефон.
 a5_log "зависимости библиотеки"
 otool -L "$OUT_DIR/libqemu-system-i386.dylib"
-if otool -L "$OUT_DIR/libqemu-system-i386.dylib" | grep -qE "$A5_WORK|/Users/|/opt/homebrew|/usr/local/Cellar"; then
+# tail -n +2 отбрасывает первую строку вывода otool — это имя самого файла,
+# а оно, разумеется, лежит по пути сборочной машины и иначе всегда совпадает
+# с искомым шаблоном.
+if otool -L "$OUT_DIR/libqemu-system-i386.dylib" | tail -n +2 |
+        grep -qE "$A5_WORK|/Users/|/opt/homebrew|/usr/local/Cellar"; then
     echo "библиотека ссылается на пути сборочной машины — на устройстве не загрузится" >&2
     exit 1
 fi
